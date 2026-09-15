@@ -5,6 +5,9 @@
 统一的 Windows 桌宠，监控你的 **AI 编码 Agent**：**Codex、Claude Code**、WorkBuddy、ZCode、DSH 开箱即用；**任何**有钩子机制或能发 HTTP 的 Agent，一分钟接入。
 实时显示"当前任务进行到哪一步"，应用需要确认时直接在桌宠上点 **允许 / 拒绝**，不用切回应用窗口。
 
+> 💡 上面点名的应用只是**内置预设的例子**，不是支持范围的边界——PetBuddy 的对象是**所有** Agent：
+> Claude Code、Cline、Roo Code、Aider、OpenHands……只要有钩子机制（Claude 风格 / 配置文件钩子）或能发 HTTP，就能接入。
+
 <p align="center">
   <img src="docs/01-running.png" width="30%" alt="运行中" />
   <img src="docs/02-parallel.png" width="30%" alt="多任务并行" />
@@ -14,6 +17,23 @@
   <img src="docs/05-idle.png" width="30%" alt="空闲光环" />
   <img src="docs/06-rest.png" width="30%" alt="休息提醒" />
 </p>
+
+<p align="center"><i>运行中 · 多任务并行 · 确认直达 · 完成 · 空闲光环 · 休息提醒</i></p>
+
+<p align="center">
+  <img src="docs/08-pet-lulu.png" width="30%" alt="噜噜" />
+  <img src="docs/09-pet-tiko.png" width="30%" alt="Tiko" />
+  <img src="docs/10-pet-eve.png" width="30%" alt="EVE" />
+</p>
+
+<p align="center"><i>形象随心换：Petdex 形象库按名字导入，内置 EVE / 团子猫 / Tiko 预设</i></p>
+
+<p align="center">
+  <img src="docs/07-panel.png" width="45%" alt="任务面板" />
+  <img src="docs/11-settings.png" width="45%" alt="设置窗口" />
+</p>
+
+<p align="center"><i>任务面板（全部应用一览）· 设置窗口（外观 / 行为 / 应用集成 / 系统）</i></p>
 
 ## 功能
 
@@ -58,6 +78,9 @@ npm run install-integrations    # 为内置应用（Codex / WorkBuddy / ZCode / 
 | WorkBuddy | Claude 风格 `hooks` 键 | `~/.workbuddy/settings.json` |
 | ZCode | config-file hooks（7 个事件 → `bridge/pet-bridge.mjs`） | `~/.zcode/cli/config.json` |
 | DSH | 挂载 `@deepseek-ai/dsh-hooks-claude-code` 指向 `~/.petbuddy/dsh-hooks.json` | `<DSH_HOME>/profiles/web/cordis.patch.yml`（patchReload: live，无需重启） |
+
+> **上表只是内置预设，不是支持范围的边界。** Claude 系 Agent（Claude Code、Cline、Roo Code…）都能用
+> claude-file 样式接入；有 HTTP 能力的用镜像模式；新钩子格式加一个 handler 即可（见下文）。
 
 - 所有钩子只**镜像状态**，永不阻塞/失败（桥接 2 秒超时、始终 exit 0）
 - 桥接发现桌宠未运行时会用 `--spawn` 拉起它（因此任一应用一动，桌宠就会出现）
