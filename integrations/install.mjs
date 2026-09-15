@@ -216,7 +216,6 @@ function codexNotifyStatus() {
 
 // ------------------------------------------------------------ style: dsh-patch
 function dshHome() {
-  const cands = [process.env.DSH_HOME, 'D:\\DeepSeekHarness\\dsh-data'];
   for (const c of cands) if (c && fs.existsSync(c)) return c;
   return cands[1];
 }

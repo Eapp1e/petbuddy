@@ -6,8 +6,7 @@
 实时显示"当前任务进行到哪一步"，应用需要确认时直接在桌宠上点 **允许 / 拒绝**，不用切回应用窗口。
 
 <p align="center">
-  <img src="docs/screenshot-tasks.png" width="46%" alt="多任务与真实计时" />
-  <img src="docs/screenshot-rest.png" width="46%" alt="休息提醒" />
+  <img src="docs/screenshot-rest.png" width="52%" alt="休息提醒与状态气泡" />
 </p>
 
 ## 功能
