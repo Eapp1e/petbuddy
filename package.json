@@ -1,0 +1,31 @@
+{
+  "name": "petbuddy",
+  "version": "0.1.0",
+  "description": "PetBuddy 🐾 — unified Windows desktop pet for ZCode / Codex / WorkBuddy / DSH: task status at a glance, approve permission requests right on the pet.",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "start-hidden": "electron . --hidden",
+    "install-integrations": "node integrations/install.mjs install",
+    "uninstall-integrations": "node integrations/install.mjs uninstall"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eapp1e/petbuddy.git"
+  },
+  "keywords": [
+    "electron",
+    "desktop-pet",
+    "ai-agent",
+    "claude",
+    "codex",
+    "workbuddy",
+    "status-monitor"
+  ],
+  "author": "EAPPLE"
+}

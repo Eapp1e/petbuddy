@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>PetBuddy</title>
+<style>
+  :root { --scale: 1; --opacity: 1; --action-speed: 1; --bg-speed: 1; }
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: transparent;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+  #stage { position: absolute; bottom: 0; left: 50%; margin-left: -150px; width: 300px; height: 360px;
+    opacity: var(--opacity); transform: scale(var(--scale)); transform-origin: bottom center; }
+
+  /* ---------------- bubble ---------------- */
+  #bubble {
+    position: absolute; left: 50%; bottom: 184px; transform: translateX(-50%);
+    max-width: 264px; min-width: 120px; padding: 8px 12px;
+    background: rgba(30,32,40,.92); color: #fff; border-radius: 12px;
+    font-size: 12px; line-height: 1.45; text-align: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+    cursor: pointer;
+  }
+  #bubble.show { opacity: 1; pointer-events: auto; }
+  #bubble .ico { width: 16px; height: 16px; vertical-align: -3px; border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+  #bubble .b-title { font-weight: 600; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 238px; margin: 0 auto; }
+  #bubble .b-detail { color: #aab; font-size: 11px; margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 216px; }
+
+  /* ---------------- confirm card ---------------- */
+  /* ---------------- overlay stack (confirm cards + toast) ---------------- */
+  #stack { position: absolute; inset: 0; pointer-events: none; z-index: 30; }
+  .confirm-item { position: absolute; left: 50%; transform: translateX(-50%); width: 250px;
+    padding: 10px 12px 12px; background: rgba(32,34,44,.97);
+    border: 1px solid rgba(255,196,80,.55); border-radius: 14px; color: #fff;
+    box-shadow: 0 3px 12px rgba(0,0,0,.3); pointer-events: auto; transition: bottom .2s; }
+  .confirm-item.rest { border-color: rgba(122,220,160,.55); padding: 8px 10px 9px; }
+  .confirm-item.rest .c-q { font-size: 12px; margin-top: 3px; max-height: 32px; }
+  .confirm-item.rest .c-detail { margin-top: 2px; }
+  .confirm-item.rest .c-btns { margin-top: 6px; }
+  .confirm-item.rest .c-btns button { padding: 4px 0; font-size: 11.5px; }
+  .confirm-item .ico { width: 15px; height: 15px; vertical-align: -3px; border-radius: 3px; }
+  .confirm-item .c-app { font-size: 11px; color: #ffd479; font-weight: 700; letter-spacing: .5px; }
+  .confirm-item .c-q { font-size: 12.5px; margin-top: 4px; line-height: 1.5; word-break: break-all; max-height: 66px; overflow: hidden; }
+  .confirm-item .c-detail { font-size: 11px; color: #99a; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .confirm-item .c-btns { display: flex; gap: 8px; margin-top: 9px; }
+  .confirm-item button { flex: 1; border: 0; border-radius: 8px; padding: 6px 0; font-size: 12px; cursor: pointer; color: #fff; transition: filter .15s; }
+  .confirm-item button:hover { filter: brightness(1.15); }
+  .confirm-item .ok { background: #2e9e5b; } .confirm-item .no { background: #c0483f; }
+  .confirm-item .skip { background: #555c; flex: .6; }
+  .confirm-item button:disabled { opacity: .35; cursor: default; filter: none; }
+  #toast { position: absolute; left: 50%; transform: translateX(-50%);
+    background: rgba(30,32,40,.95); color: #fff; font-size: 11.5px; padding: 6px 14px; white-space: nowrap;
+    border-radius: 10px; opacity: 0; transition: opacity .3s, bottom .2s; pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35); z-index: 31; }
+  #toast.show { opacity: 1; }
+  /* ---------------- pet sprite ---------------- */
+  #pet-wrap {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+    transform-origin: bottom center; width: 160px; height: 190px;
+    cursor: grab;
+  }
+  #pet-wrap:active { cursor: grabbing; }
+  #pet { position: absolute; inset: 0; z-index: 2; animation: bob calc(4.4s / var(--action-speed)) ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+  /* blob/cat body */
+  .blob-body {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    width: 118px; height: 100px; background: var(--body, #8fb4ff);
+    border-radius: 48% 48% 42% 42% / 58% 58% 40% 40%;
+    box-shadow: inset -8px -10px 0 rgba(0,0,0,.06);
+    transition: background .3s;
+  }
+  .ear { position: absolute; top: -16px; width: 30px; height: 30px; background: var(--body, #8fb4ff);
+    border-radius: 6px 80% 6px 80%; transition: background .3s; }
+  .ear.l { left: 12px; transform: rotate(12deg); }
+  .ear.r { right: 12px; transform: rotate(78deg); }
+  .eye { position: absolute; top: 34px; width: 12px; height: 14px; background: #22242c;
+    border-radius: 50%; animation: blink calc(4.5s / var(--action-speed)) infinite; }
+  .eye.l { left: 32px; } .eye.r { right: 32px; }
+  @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95%, 97% { transform: scaleY(.08); } }
+  .mouth { position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+    width: 16px; height: 8px; border: 2.5px solid #22242c; border-top: 0;
+    border-radius: 0 0 12px 12px; }
+  .blush { position: absolute; top: 48px; width: 14px; height: 7px; background: #ff9aa8;
+    border-radius: 50%; opacity: .55; }
+  .blush.l { left: 16px; } .blush.r { right: 16px; }
+  .arm { position: absolute; bottom: 18px; width: 16px; height: 24px; background: var(--body, #8fb4ff);
+    border-radius: 10px; transition: background .3s; }
+  .arm.l { left: -8px; } .arm.r { right: -8px; }
+
+  /* whale & panda variants removed — EVE only */
+
+  /* EVE petdex spritesheet mode */
+  #sheet-wrap { position: absolute; left: 50%; bottom: 4px; width: 144px; height: 156px;
+    margin-left: -72px; z-index: 2; display: none; }
+  #sheet-sprite { position: absolute; inset: 0;
+    background-image: url('assets/eve-sheet.webp'); background-repeat: no-repeat;
+    background-size: 1152px 1404px; }
+  #pet.eve-mode { display: none; }
+
+  /* EVE variant — movie-faithful: wide black visor wrapping the head, body
+     tapering downward, small blue LED eyes, stubby white arms at the sides */
+  .eve-face, .eve-glow { display: none; }
+  #pet.eve .blob-body {
+    width: 104px; height: 140px; bottom: 12px;
+    background: linear-gradient(165deg, #ffffff 8%, #f2f5f9 50%, #d9e0ea);
+    border-radius: 50% 50% 42% 42% / 56% 56% 38% 38%;
+    box-shadow: inset -7px -9px 0 rgba(160,170,190,.14), 0 8px 20px rgba(0,0,0,.15);
+  }
+  #pet.eve .ear, #pet.eve .blush, #pet.eve .mouth, #pet.eve .tail, #pet.eve .spout, #pet.eve .eye { display: none; }
+  #pet.eve .eve-face {
+    display: block; position: absolute; left: 3px; right: 3px; top: 10px; height: 64px;
+    background: linear-gradient(160deg, #131824, #04060b 65%);
+    border-radius: 44px 44px 48px 48px / 46px 46px 54px 54px;
+    box-shadow: inset 0 3px 6px rgba(255,255,255,.09), inset 0 -6px 12px rgba(0,0,0,.65),
+                0 3px 0 -1px rgba(220,228,240,.8);
+  }
+  #pet.eve .eve-eye {
+    display: block; position: absolute; top: 23px; width: 13px; height: 17px;
+    background: #35c8ff; border-radius: 7px;
+    box-shadow: 0 0 9px #35c8ff, 0 0 20px rgba(53,200,255,.5);
+    animation: eve-blink calc(5s / var(--action-speed)) infinite;
+  }
+  #pet.eve .eve-eye.l { left: 27px; }
+  #pet.eve .eve-eye.r { right: 27px; }
+  @keyframes eve-blink { 0%, 91%, 100% { transform: scaleY(1); } 95%, 97% { transform: scaleY(.06); } }
+  #pet.eve .arm {
+    width: 15px; height: 34px; bottom: 32px;
+    background: linear-gradient(180deg, #ffffff 55%, #e2e8f1);
+    border-radius: 8px;
+    box-shadow: inset -2px -3px 0 rgba(160,170,190,.22);
+  }
+  #pet.eve .arm.l { left: -7px; transform: rotate(6deg); }
+  #pet.eve .arm.r { right: -7px; transform: rotate(-6deg); }
+  #pet.eve .arm::after { content: ''; position: absolute; left: 1px; right: 1px; bottom: 2px;
+    height: 12px; background: inherit; border-radius: 7px; }
+  #pet.eve .eve-glow {
+    display: none; position: absolute; left: 50%; bottom: -4px; transform: translateX(-50%);
+    width: 70px; height: 15px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(53,200,255,.55), transparent 70%);
+  }
+  #pet.eve.working .eve-glow { display: block; animation: eve-glow calc(1s / var(--action-speed)) ease-in-out infinite alternate; }
+  @keyframes eve-glow { from { opacity: .45; } to { opacity: 1; } }
+  #pet.eve.working { animation: eve-hover calc(2.6s / var(--action-speed)) ease-in-out infinite; }
+  @keyframes eve-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+  /* EVE eye expressions per state */
+  #pet.eve.done .eve-eye {
+    height: 8px; top: 27px; border-radius: 9px 9px 2px 2px;
+    background: transparent; border: 3px solid #35c8ff; border-bottom: 0;
+    box-shadow: 0 0 10px rgba(53,200,255,.7); animation: none;
+  }
+  #pet.eve.done .arm.l { transform: rotate(-38deg) translateY(-6px); }
+  #pet.eve.done .arm.r { transform: rotate(38deg) translateY(-6px); }
+  #pet.eve.error .eve-eye {
+    transform: skewY(-14deg) scaleY(.72); animation: none;
+    box-shadow: 0 0 9px #ff6b5e; background: #ff6b5e;
+  }
+  #pet.eve.error .eve-eye.r { transform: skewY(14deg) scaleY(.72); }
+  #pet.eve.confirm .eve-eye {
+    width: 16px; height: 21px; border-radius: 8px; top: 20px;
+    animation: eve-alert calc(.6s / var(--action-speed)) ease-in-out infinite alternate;
+  }
+  #pet.eve.confirm .eve-eye.l { left: 25px; } #pet.eve.confirm .eve-eye.r { right: 25px; }
+  @keyframes eve-alert { from { transform: scaleY(1); } to { transform: scaleY(1.35); } }
+
+  /* state decorations */
+  #pet.working .arm.l { animation: type-l calc(.7s / var(--action-speed)) infinite alternate; }
+  #pet.working .arm.r { animation: type-r calc(.7s / var(--action-speed)) infinite alternate; }
+  @keyframes type-l { from { transform: translateY(0) rotate(0); } to { transform: translateY(-7px) rotate(-14deg); } }
+  @keyframes type-r { from { transform: translateY(-7px) rotate(14deg); } to { transform: translateY(0) rotate(0); } }
+  #pet.confirm { animation: shake calc(.5s / var(--action-speed)) ease-in-out infinite; }
+  @keyframes shake { 0%,100% { transform: translateY(0) rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+  #pet.done .eye { height: 5px; top: 40px; border-radius: 4px; animation: none; }
+  #pet.done .mouth { width: 22px; height: 11px; }
+  #pet.error .eye { background: #c0483f; animation: none; }
+  #pet.celebrate { animation: celebrate .8s ease-in-out 2; }
+  @keyframes celebrate {
+    0%, 100% { transform: translateY(0) scale(1); }
+    30% { transform: translateY(-18px) scale(1.06); }
+    55% { transform: translateY(0) scale(.95); }
+    75% { transform: translateY(-7px) scale(1.02); }
+  }
+  /* ---------------- working ring (style switchable in settings) -------- */
+  #spinner {
+    position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%);
+    width: 158px; height: 158px; border-radius: 50%;
+    opacity: 0; transition: opacity .35s; z-index: 0;
+    --ring: #4fd8ff;
+  }
+  #pet.working ~ #spinner, #spinner.on { opacity: .9; }
+  #spinner::before, #spinner::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
+  #spinner > i { display: none; }
+  @keyframes spin { to { transform: translateX(-50%) rotate(360deg); } }
+  @keyframes rot-cw { to { transform: rotate(360deg); } }
+  @keyframes rot-ccw { to { transform: rotate(-360deg); } }
+  @keyframes spinner-breathe { from { opacity: .3; } to { opacity: .95; } }
+  @keyframes r-ripple { 0% { transform: scale(.55); opacity: .85; } 100% { transform: scale(1.06); opacity: 0; } }
+
+  /* 1 · classic — conic sweep + breathe */
+  #spinner.rs-classic {
+    background: conic-gradient(from 0deg, transparent 0deg, var(--ring) 70deg, transparent 125deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    animation: spin calc(1.2s / var(--bg-speed)) linear infinite,
+               spinner-breathe calc(1s / var(--bg-speed)) ease-in-out infinite alternate;
+    filter: drop-shadow(0 0 5px var(--ring));
+  }
+  /* 2 · dual — two counter-rotating arcs */
+  #spinner.rs-dual { filter: drop-shadow(0 0 5px var(--ring)); }
+  #spinner.rs-dual::before {
+    background: conic-gradient(from 0deg, transparent, var(--ring) 80deg, transparent 150deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    animation: rot-cw calc(1.5s / var(--bg-speed)) linear infinite;
+  }
+  #spinner.rs-dual::after {
+    inset: 18px; opacity: .8;
+    background: conic-gradient(from 180deg, transparent, #fff 40deg, var(--ring) 90deg, transparent 150deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    animation: rot-ccw calc(1.1s / var(--bg-speed)) linear infinite;
+  }
+  /* 3 · dash — the classic gap spinner */
+  #spinner.rs-dash::before {
+    inset: 7px; border: 3px solid rgba(255,255,255,.10); border-top-color: var(--ring);
+    animation: rot-cw calc(1s / var(--bg-speed)) linear infinite;
+    filter: drop-shadow(0 0 6px var(--ring));
+  }
+  /* 4 · comet — long fading tail with a bright head */
+  #spinner.rs-comet { filter: drop-shadow(0 0 6px var(--ring)); }
+  #spinner.rs-comet::before {
+    background: conic-gradient(from 0deg, transparent 0deg 190deg, var(--ring) 340deg, #fff 357deg, transparent 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+    animation: rot-cw calc(1.8s / var(--bg-speed)) linear infinite;
+  }
+  /* 5 · pulse — rings rippling outward */
+  #spinner.rs-pulse::before, #spinner.rs-pulse::after {
+    border: 2px solid var(--ring);
+    animation: r-ripple calc(1.7s / var(--bg-speed)) ease-out infinite;
+  }
+  #spinner.rs-pulse::after { animation-delay: calc(-.85s / var(--bg-speed)); }
+  /* 6 · dots — three chasing lights */
+  #spinner.rs-dots { animation: spin calc(1.7s / var(--bg-speed)) linear infinite; }
+  #spinner.rs-dots > i {
+    display: block; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px;
+    border-radius: 50%; background: var(--ring); box-shadow: 0 0 8px var(--ring);
+  }
+  #spinner.rs-dots > i:nth-child(1) { transform: translateY(-72px); }
+  #spinner.rs-dots > i:nth-child(2) { transform: rotate(120deg) translateY(-72px); opacity: .75; }
+  #spinner.rs-dots > i:nth-child(3) { transform: rotate(240deg) translateY(-72px); opacity: .5; }
+  /* 7 · dashed — a dashed ring turning slowly */
+  #spinner.rs-dashed::before {
+    background: repeating-conic-gradient(from 0deg, var(--ring) 0deg 5deg, transparent 5deg 16deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    animation: rot-cw calc(6s / var(--bg-speed)) linear infinite;
+    filter: drop-shadow(0 0 5px var(--ring));
+  }
+  /* 8 · rainbow — a hue-cycling gradient ring (fixed palette) */
+  #spinner.rs-rainbow::before {
+    background: conic-gradient(from 0deg, #ff6b6b, #ffd479, #6ee7a8, #4fd8ff, #a78bfa, #ff6b6b);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+    animation: rot-cw calc(3s / var(--bg-speed)) linear infinite;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,.28));
+  }
+  /* 9 · glow — a soft halo breathing in and out */
+  #spinner.rs-glow::before {
+    background: radial-gradient(farthest-side, transparent 60%, var(--ring) 74%, transparent 90%);
+    animation: r-breathe-scale calc(2.6s / var(--bg-speed)) ease-in-out infinite alternate;
+    filter: blur(3px) drop-shadow(0 0 10px var(--ring));
+  }
+  @keyframes r-breathe-scale { from { transform: scale(.9); opacity: .45; } to { transform: scale(1.05); opacity: .95; } }
+  /* 10 · sweep — two opposing arcs sweeping past each other */
+  #spinner.rs-sweep::before {
+    background: conic-gradient(from 0deg, transparent 0deg 300deg, var(--ring) 345deg, transparent 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+    animation: rot-cw calc(1.6s / var(--bg-speed)) linear infinite;
+    filter: drop-shadow(0 0 5px var(--ring));
+  }
+  #spinner.rs-sweep::after {
+    inset: 20px; opacity: .85;
+    background: conic-gradient(from 180deg, transparent 0deg 300deg, #fff 345deg, transparent 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    animation: rot-ccw calc(1.6s / var(--bg-speed)) linear infinite;
+  }
+  /* idle: the ring stays on screen but calms down (translucent colour + slow) */
+  #spinner.idle { opacity: .55; }
+  #spinner.idle.rs-classic { animation-duration: calc(3.4s / var(--bg-speed)), calc(2.8s / var(--bg-speed)); }
+  #spinner.idle.rs-dual::before { animation-duration: calc(4.2s / var(--bg-speed)); }
+  #spinner.idle.rs-dual::after { animation-duration: calc(3.6s / var(--bg-speed)); }
+  #spinner.idle.rs-dash::before { animation-duration: calc(3.2s / var(--bg-speed)); }
+  #spinner.idle.rs-comet::before { animation-duration: calc(5s / var(--bg-speed)); }
+  #spinner.idle.rs-dots { animation-duration: calc(4.4s / var(--bg-speed)); }
+  #spinner.idle.rs-pulse::before, #spinner.idle.rs-pulse::after { animation-duration: calc(4.6s / var(--bg-speed)); }
+  #spinner.idle.rs-dashed::before { animation-duration: calc(14s / var(--bg-speed)); }
+  #spinner.idle.rs-rainbow::before { animation-duration: calc(8s / var(--bg-speed)); }
+  #spinner.idle.rs-glow::before { animation-duration: calc(4.6s / var(--bg-speed)); }
+  #spinner.idle.rs-sweep::before, #spinner.idle.rs-sweep::after { animation-duration: calc(4s / var(--bg-speed)); }
+
+  /* app indicator dots — round dots on a dark pill so dark dots stay visible */
+  #dots { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+    display: flex; gap: 6px; z-index: 3; background: rgba(20,22,28,.62);
+    padding: 4px 7px; border-radius: 11px; box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+  #dots span { width: 9px; height: 9px; border-radius: 50%; background: #ffffff2e;
+    border: 1px solid rgba(255,255,255,.6); opacity: .85; transition: opacity .3s, box-shadow .3s; }
+  #dots span.on { background: currentColor; border-color: rgba(255,255,255,.5);
+    opacity: 1; box-shadow: 0 0 6px currentColor; }
+  #dots span.busy { animation: dot-pulse calc(1s / var(--bg-speed)) ease-in-out infinite alternate; }
+  @keyframes dot-pulse { from { transform: scale(1); opacity: .8; } to { transform: scale(1.35); opacity: 1; } }
+
+  /* custom sprite */
+  #custom-sprite { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+    max-width: 150px; max-height: 170px; display: none; z-index: 2; }
+  #pet.custom-mode { display: none; }
+  #pet.custom-mode ~ #custom-sprite { display: block; }
+
+  /* ---------------- task panel ---------------- */
+  #panel {
+    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%) translateY(8px);
+    width: 264px; max-height: 205px; overflow-y: auto;
+    background: rgba(28,30,38,.96); border-radius: 14px; color: #dde;
+    padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    opacity: 0; pointer-events: none; transition: all .22s; z-index: 25;
+  }
+  #panel.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  #panel::-webkit-scrollbar { width: 5px; }
+  #panel::-webkit-scrollbar-thumb { background: #ffffff1e; border-radius: 3px; }
+  #panel::-webkit-scrollbar-thumb:hover { background: #ffffff30; }
+  #panel::-webkit-scrollbar-track { background: transparent; }
+  #panel h3 { font-size: 12px; color: #99a; font-weight: 600; margin-bottom: 7px;
+    display: flex; align-items: center; }
+  #panel h3 span { flex: 1; }
+  #panel-close { width: 20px; height: 20px; line-height: 18px; text-align: center;
+    border-radius: 6px; background: #ffffff14; color: #aab; cursor: pointer;
+    font-size: 13px; user-select: none; flex-shrink: 0; }
+  #panel-close:hover { background: #ffffff2c; color: #fff; }
+  .p-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; border-top: 1px solid #ffffff10; }
+  .p-row.off { opacity: .4; }
+  .p-row.off .p-ico img { filter: grayscale(.7); }
+  .p-row:first-of-type { border-top: 0; }
+  .p-ico { width: 20px; height: 20px; text-align: center; flex-shrink: 0; }
+  .p-ico img { width: 18px; height: 18px; vertical-align: -3px; border-radius: 5px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+  .p-main { flex: 1; min-width: 0; }
+  .p-name { font-size: 12px; font-weight: 600; }
+  .p-sub { font-size: 10.5px; color: #889; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-state { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: #ffffff14; white-space: nowrap; }
+  .p-state.off { background: #ffffff0a; color: #778; }
+  .p-state.working { background: #2e9e5b33; color: #7fd7a0; }
+  .p-state.confirm { background: #ffd47933; color: #ffd479; }
+  .p-state.done { background: #7aa2ff33; color: #9db9ff; }
+    .p-state.error { background: #c0483f33; color: #ff9d94; }
+  .p-row.wrap { flex-wrap: wrap; }
+  .p-todos { width: 100%; margin: 1px 0 3px 28px; }
+  .p-todo { display: flex; gap: 5px; font-size: 10.5px; line-height: 1.55; color: #889; }
+  .p-todo .m { flex-shrink: 0; width: 11px; text-align: center; }
+  .p-todo .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-todo.completed { color: #6fbf8f; opacity: .8; }
+  .p-todo.in_progress { color: #fff; font-weight: 600; }
+  .p-todo.in_progress .m { color: #7fd7a0; }
+
+  /* context menu */
+  #menu {
+    position: absolute; display: none; min-width: 130px; padding: 5px;
+    background: rgba(28,30,38,.97); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+    z-index: 40;
+  }
+  #menu div { padding: 6px 12px; font-size: 12px; color: #dde; border-radius: 6px; cursor: pointer; }
+  #menu div:hover { background: #ffffff18; }
+  #toast { position: absolute; left: 50%; bottom: var(--toast-bottom, 242px); transform: translateX(-50%);
+    background: rgba(30,32,40,.95); color: #fff; font-size: 11.5px; padding: 6px 14px;
+    border-radius: 10px; opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.35); z-index: 50; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="stack"></div>
+  <div id="bubble"><div class="b-title"></div><div class="b-detail"></div></div>
+
+
+  </div>
+
+  <div id="panel"><h3><span>任务面板</span><div id="panel-close" title="关闭">✕</div></h3><div id="panel-rows"></div></div>
+
+  <div id="pet-wrap">
+    <div id="pet">
+      <div class="blob-body">
+        <div class="ear l"></div><div class="ear r"></div>
+        <div class="eye l"></div><div class="eye r"></div>
+        <div class="blush l"></div><div class="blush r"></div>
+        <div class="mouth"></div>
+        <div class="arm l"></div><div class="arm r"></div>
+        <div class="tail"></div>
+        <div class="spout"></div>
+        <div class="eve-face"><div class="eve-eye l"></div><div class="eve-eye r"></div></div>
+        <div class="eve-glow"></div>
+      </div>
+    </div>
+    <img id="custom-sprite" alt="">
+    <div id="sheet-wrap"><div id="sheet-sprite"></div></div>
+    <div id="spinner"></div>
+  </div>
+  <div id="dots"></div>
+
+  <div id="toast"></div>
+</div>
+
+<div id="menu">
+  <div data-act="panel">任务面板</div>
+  <div data-act="settings">设置</div>
+  <div data-act="logs">日志目录</div>
+  <div data-act="quit">退出</div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const pet = $('#pet'), bubble = $('#bubble'),
+      panel = $('#panel'), menu = $('#menu'), dots = $('#dots'),
+      stack = $('#stack'), toastEl = $('#toast');
+
+let lastSnap = null;
+let panelOpen = false;
+let bubbleCycleIds = [];
+let bubbleIdx = 0;
+let overlayBase = 214; // bottom of the overlay stack (above pet head / bubble)
+
+function cycleBubble() {
+  const working = (lastSnap?.apps || []).filter(x => x.running && x.state === 'working');
+  if (working.length > 1) {
+    bubbleIdx = (bubbleIdx + 1) % working.length;
+    render(lastSnap);
+  }
+}
+
+// ---------------- petdex spritesheet animator ----------------
+// petdex pet sheets: 8-col grid, 9 fixed action rows (state viewer convention)
+const SHEET_SCALE = 0.75;
+const PETDEX_STATES = {
+  idle:     { row: 0, cols: 6, ms: 520 },
+  runRight: { row: 1, cols: 8, ms: 140 },
+  runLeft:  { row: 2, cols: 8, ms: 140 },
+  waving:   { row: 3, cols: 4, ms: 280 },
+  jumping:  { row: 4, cols: 5, ms: 160 },
+  failed:   { row: 5, cols: 8, ms: 190 },
+  waiting:  { row: 6, cols: 6, ms: 460 },
+  running:  { row: 7, cols: 6, ms: 420 },
+  review:   { row: 8, cols: 6, ms: 420 },
+};
+// our states -> playlists. Idle mostly rests on the official Idle loop with
+// a rare other action (petdex/codex style), instead of cycling nonstop
+function petPlaylist(state) {
+  const I = PETDEX_STATES.idle;
+  switch (state) {
+    case 'working': return [PETDEX_STATES.runRight, PETDEX_STATES.runLeft];
+    case 'done':    return [PETDEX_STATES.jumping, PETDEX_STATES.jumping];
+    case 'confirm': return [{ ...PETDEX_STATES.waving, rep: 3 }];
+    case 'error':   return [{ ...PETDEX_STATES.failed, rep: 2 }];
+    default:        return [I, I, I, I, I, I, I, I, I, I,
+                            { ...PETDEX_STATES.review, rep: 2 }, I, I, I, I, I, I, I, I, I,
+                            { ...PETDEX_STATES.waving, rep: 3 }, I, I, I, I, I, I, I, I, I,
+                            { ...PETDEX_STATES.waiting, rep: 2 }, I, I, I, I, I, I, I, I, I];
+  }
+}
+let sheetTimer = null, sheetFrames = [], sheetPos = 0;
+let SHEET_FW = 144, SHEET_FH = 156;
+const sheetDims = {};
+function buildPlaylist(state, speed) {
+  // speed: 1 = original resource pace; 0 freezes playback entirely
+  const n = Number(speed);
+  const sp = (!Number.isFinite(n) || n <= 0.001) ? Infinity : n;
+  if (!Number.isFinite(sp)) return []; // frozen: keep showing the last frame
+  const frames = [];
+  for (const seg of petPlaylist(state)) {
+    const rep = seg.rep || 1;
+    for (let c0 = 0; c0 < seg.cols; c0++) frames.push({ row: seg.row, col: c0, ms: seg.ms / sp });
+  }
+  return frames;
+}
+function sheetTick() {
+  if (!sheetFrames.length) return;
+  const el = $('#sheet-sprite');
+  const f = sheetFrames[sheetPos % sheetFrames.length];
+  el.style.backgroundPosition = `-${(f.col * SHEET_FW).toFixed(1)}px -${(f.row * SHEET_FH).toFixed(1)}px`;
+  sheetPos++;
+  const next = sheetFrames[sheetPos % sheetFrames.length];
+  sheetTimer = setTimeout(sheetTick, Math.max(60, next.ms));
+}
+function setSheet(state, sheetUrl, speed) {
+  const el = $('#sheet-sprite');
+  const url = sheetUrl || el.dataset.url || '';
+  const spd = String(speed || 1);
+  if (el.dataset.state === state && el.dataset.url === url && el.dataset.speed === spd) return;
+  el.dataset.state = state; el.dataset.url = url; el.dataset.speed = spd;
+  clearTimeout(sheetTimer); sheetTimer = null; sheetPos = 0;
+  if (!url) return;
+  // resolve natural size once per sheet to support any petdex grid resolution
+  const key = 'dims:' + url;
+  const applyDims = (w, h) => {
+    SHEET_FW = (w / 8) * SHEET_SCALE; SHEET_FH = (h / 9) * SHEET_SCALE;
+    el.style.backgroundImage = `url("${url}")`;
+    el.style.backgroundSize = `${(w * SHEET_SCALE).toFixed(1)}px ${(h * SHEET_SCALE).toFixed(1)}px`;
+    sheetFrames = buildPlaylist(state, speed);
+    sheetPos = 0;
+    clearTimeout(sheetTimer);
+    if (sheetFrames.length) sheetTick(); // speed 0 -> empty playlist -> frozen
+  };
+  if (sheetDims[key]) { applyDims(sheetDims[key][0], sheetDims[key][1]); return; }
+  const img = new Image();
+  img.onload = () => { sheetDims[key] = [img.naturalWidth, img.naturalHeight]; applyDims(img.naturalWidth, img.naturalHeight); };
+  img.onerror = () => {
+    // a broken/missing sheet should never blank the pet — fall back to EVE
+    stopSheet();
+    window.petbuddy.logLine('sheet load failed: ' + url);
+    showToast('⚠️ 形象加载失败: ' + url.slice(0, 90), 6000);
+    setTimeout(() => {
+      window.petbuddy.patchSettings({ appearance: { sprite: 'eve' } }).catch(() => {});
+    }, 400);
+  };
+  img.src = url;
+}
+function stopSheet() {
+  clearTimeout(sheetTimer); sheetTimer = null;
+  sheetFrames = []; sheetPos = 0;
+  const el = $('#sheet-sprite');
+  if (el) { el.dataset.state = ''; el.dataset.url = ''; el.dataset.speed = ''; }
+}
+
+// ---------------- completion notifications ----------------
+const prevStates = {};
+let firstRender = true;
+function checkTransitions(snap) {
+  for (const app of snap.apps || []) {
+    const prev = prevStates[app.id];
+    prevStates[app.id] = app.state;
+    if (firstRender || prev === app.state) continue;
+    if (app.state === 'done') {
+      showToast(`🎉 ${app.name} 任务完成`);
+      celebrate();
+      if ((lastSnap.settings?.behavior?.confirmSound) !== false) chime();
+    } else if (app.state === 'error') {
+      showToast(`⚠️ ${app.name} 任务出错`);
+      if ((lastSnap.settings?.behavior?.confirmSound) !== false) beep();
+    } else if (app.state === 'idle' && prev === 'working') {
+      // a running task vanished without a proper stop (crash / interrupt)
+      showToast(`⚠️ ${app.name} 任务已中断`);
+      if ((lastSnap.settings?.behavior?.confirmSound) !== false) beep();
+    }
+  }
+  firstRender = false;
+}
+
+let celebrateTimer = null;
+function celebrate() {
+  pet.classList.add('celebrate');
+  clearTimeout(celebrateTimer);
+  celebrateTimer = setTimeout(() => pet.classList.remove('celebrate'), 1800);
+}
+
+// ---------------- render ----------------
+const STATE_TEXT = { idle: '空闲', working: '运行中', confirm: '待确认', done: '完成', error: '出错' };
+
+function ico(app, size) {
+  return app.icon
+    ? `<img class="ico" src="${app.icon}" style="width:${size || 15}px;height:${size || 15}px">`
+    : app.emoji;
+}
+
+function render(snap) {
+  lastSnap = snap;
+  checkTransitions(snap);
+  const s = snap.settings || {};
+  const a = s.appearance || {};
+  if (!a.sprite) a.sprite = 'eve'; // defensive: empty sprite from old configs
+  document.documentElement.style.setProperty('--scale', a.scale ?? 1);
+  document.documentElement.style.setProperty('--opacity', a.opacity ?? 1);
+  document.documentElement.style.setProperty('--action-speed', a.animationSpeed ?? 1);
+  document.documentElement.style.setProperty('--bg-speed', a.bgSpeed ?? 1);
+
+
+  // aggregate animation state
+  const agg = snap.aggregate || 'idle';
+
+  // sprite variant: petdex spritesheet for eve, CSS blob otherwise
+  let sheetUrl = '';
+  if (a.sprite === 'eve') sheetUrl = 'assets/eve-sheet.webp';
+  else if (String(a.sprite || '').startsWith('petdex:')) {
+    sheetUrl = (snap.petsDir ? snap.petsDir : 'assets/')
+      + a.sprite.slice(7) + '/spritesheet.webp';
+  }
+  const eveMode = !!sheetUrl;
+  pet.classList.toggle('eve-mode', eveMode);
+  $('#sheet-wrap').style.display = eveMode ? 'block' : 'none';
+  if (eveMode) setSheet(agg, sheetUrl, a.animationSpeed ?? 1);
+  else stopSheet();
+  const useCustom = a.sprite === 'custom' && a.customSpritePath;
+  pet.classList.toggle('custom-mode', !!useCustom);
+  if (useCustom) $('#custom-sprite').src = 'file:///' + a.customSpritePath.replace(/\\/g, '/');
+  if (!eveMode) {
+    pet.className = pet.className.replace(/\b(idle|working|confirm|done|error)\b/g, '').trim();
+    pet.classList.add(agg === 'confirm' ? 'confirm' : agg);
+    if (useCustom) pet.classList.add('custom-mode');
+  }
+  // the ring is always visible (while 显示光环 is on) — colour carries the
+  // state: translucent grey when idle, bright when working/confirm/…
+  spinnerEl.classList.add('on');
+  const showRing = (a.showRing !== false), showDots = (a.showDots !== false);
+  spinnerEl.style.display = showRing ? '' : 'none';
+  // a rest reminder outranks the state colour — the ring turns the same green
+  const restShowing = (snap.confirms || []).some((c) => c.rest);
+  spinnerEl.style.setProperty('--ring', restShowing ? REST_RING : (AGG_COLOR[agg] || AGG_COLOR.idle));
+  spinnerEl.classList.toggle('idle', agg !== 'working');
+  applyRingStyle(a.ringStyle || 'classic');
+  dots.style.display = showDots ? 'flex' : 'none';
+
+  // bubble: cycle through running apps; completions only shown when nothing
+  // is running (the toast already announced them)
+  const working = (snap.apps || [])
+    .filter(x => x.running && x.state === 'working')
+    .sort((x, y) => y.lastTs - x.lastTs);
+  const finished = (snap.apps || [])
+    .filter(x => x.running && (x.state === 'done' || x.state === 'error'))
+    .sort((x, y) => y.lastTs - x.lastTs);
+  const actives = working.length ? working : finished;
+  const ids = actives.map(x => x.id).join();
+  if (ids !== bubbleCycleIds.join()) { bubbleCycleIds = actives.map(x => x.id); bubbleIdx = 0; }
+  bubbleIdx = bubbleIdx % Math.max(actives.length, 1);
+  const busy = (snap.apps || []).find(x => x.state === 'confirm') || actives[bubbleIdx];
+  const taskConfirmPending = (snap.confirms || []).some(c => !c.rest);
+  const bubbleWillShow = (a.bubbleEnabled !== false) && !!busy && !panelOpen && !taskConfirmPending;
+
+  // overlay stack: cards + toast are laid out bottom-up over whatever is
+  // actually visible below them. the bottom slot is always the bubble's
+  // position: with a bubble shown, cards start above the bubble itself;
+  // without one, cards sit at the bubble's distance from the pet (so the
+  // rest reminder never floats far above the pet). base is read from CSS
+  // (#bubble bottom) so the two never desync.
+  const bubbleBottom = parseFloat(getComputedStyle(bubble).bottom) || 184;
+  overlayBase = bubbleBottom + (bubbleWillShow ? bubble.offsetHeight + 8 : 8);
+  renderCards(snap);
+  layoutStack(snap);
+
+  if (bubbleWillShow) {
+    const extra = working.length > 1 ? ` ${bubbleIdx + 1}/${working.length}` : '';
+    const tExtra = (busy.tasks > 1 && working.length <= 1) ? ` · ${busy.tasks} 个任务并行` : '';
+    // real-time progress: plan's current step → human action + target →
+    // task title → raw detail (never a bare command line)
+    const todos = Array.isArray(busy.todos) ? busy.todos : [];
+    const curTodo = todos.find((x) => x.status === 'in_progress') || todos.find((x) => x.status === 'pending');
+    let detailText;
+    if (busy.state === 'working' && curTodo) {
+      detailText = curTodo.content;
+    } else if (busy.state === 'working' && busy.action) {
+      detailText = [busy.action, busy.target].filter(Boolean).join(' · ');
+    } else if (busy.state === 'working' && busy.title) {
+      detailText = `任务：${busy.title}`;
+    } else {
+      detailText = busy.detail || busy.title || '';
+    }
+    bubble.querySelector('.b-title').innerHTML =
+      `${ico(busy)} ${busy.name} · ${STATE_TEXT[busy.state] || busy.state}${extra}${tExtra}<span class="b-elapsed"></span>`;
+    bubble.querySelector('.b-detail').textContent = detailText;
+    bubbleElapsedFrom = busy.state === 'working' ? (busy.startedAt || 0) : 0;
+    const el = bubble.querySelector('.b-elapsed');
+    if (el) el.textContent = bubbleElapsedFrom ? ` · ${fmtElapsed(Date.now() - bubbleElapsedFrom)}` : '';
+    bubble.classList.add('show');
+  } else bubble.classList.remove('show');
+
+  renderDots(snap);
+  if (panelOpen) renderPanel(snap);
+}
+
+// ---------------- overlay stack: confirm cards + completion toast ----------------
+const cardEls = new Map();
+let toastUntil = 0, lastToastText = '', reportedNeed = 360;
+function showToast(text, ms = 2600) {
+  toastUntil = Date.now() + ms;
+  lastToastText = text;
+  toastEl.textContent = text;
+  layoutStack(lastSnap || { confirms: [], apps: [] });
+}
+function renderCards(snap) {
+  const cards = (snap.confirms || []).slice().sort((a, b) => a.ts - b.ts); // time order
+  for (const [id, el] of cardEls) {
+    if (!cards.find(c => c.id === id)) { el.remove(); cardEls.delete(id); }
+  }
+  for (const c of cards) {
+    let el = cardEls.get(c.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'confirm-item' + (c.rest ? ' rest' : '');
+      el.innerHTML = '<div class="c-app"></div><div class="c-q"></div><div class="c-detail"></div><div class="c-btns"><button class="ok"></button><button class="no"></button><button class="skip">忽略</button></div>';
+      el.querySelector('.ok').onclick = () => window.petbuddy.decide(c.id, 'approve');
+      el.querySelector('.no').onclick = () => window.petbuddy.decide(c.id, 'deny');
+      el.querySelector('.skip').onclick = () => window.petbuddy.decide(c.id, 'dismiss');
+      stack.appendChild(el);
+      cardEls.set(c.id, el);
+    }
+    const app = (snap.apps || []).find(x => x.id === c.app);
+    el.querySelector('.c-app').innerHTML = c.rest
+      ? '⏰ 休息提醒'
+      : `${app ? ico(app) + ' ' + app.name : c.app} 请求确认`;
+    el.querySelector('.c-q').textContent = c.question || '需要确认';
+    el.querySelector('.c-detail').textContent = c.detail || '';
+    const okBtn = el.querySelector('.ok'), noBtn = el.querySelector('.no');
+    okBtn.textContent = c.approveText || '允许';
+    noBtn.textContent = c.denyText || '拒绝';
+    okBtn.disabled = !c.canApprove; noBtn.disabled = !c.canDeny;
+    el.querySelector('.skip').style.display = c.rest ? 'none' : '';
+  }
+}
+function layoutStack(snap) {
+  // base: above the bubble when shown, else just above the pet head
+  let bottom = overlayBase;
+  const cards = (snap.confirms || []).slice().sort((a, b) => a.ts - b.ts);
+  for (const c of cards) {
+    const el = cardEls.get(c.id);
+    if (!el) continue;
+    el.style.bottom = bottom + 'px';
+    bottom += el.offsetHeight + 8; // uniform 8px gap, same as bubble↔card (card shadows eat ~3px visually)
+  }
+  const toastOn = Date.now() < toastUntil && !!lastToastText;
+  toastEl.style.bottom = bottom + 'px';
+  toastEl.classList.toggle('show', toastOn);
+  if (toastOn) bottom += toastEl.offsetHeight + 8;
+  // grow the window when the stack needs headroom (renderer-reported);
+  // guarded so a bridge failure can never abort the render tail (bubble/toast)
+  const need = Math.ceil(bottom + 8);
+  if (Math.abs(need - reportedNeed) > 6) { reportedNeed = need; try { window.petbuddy.setNeedHeight(need); } catch {} }
+}
+function renderDots(snap) {
+  const dotIds = (snap.apps || []).map(x => x.id).join();
+  if (dots.dataset.ids !== dotIds) {
+    dots.dataset.ids = dotIds;
+    dots.innerHTML = '';
+    for (const app of snap.apps || []) {
+      const d = document.createElement('span');
+      d.style.color = app.color;
+      d.dataset.id = app.id;
+      d.title = app.name;
+      dots.appendChild(d);
+    }
+  }
+  for (const d of dots.children) {
+    const app = (snap.apps || []).find(x => x.id === d.dataset.id);
+    if (!app) continue;
+    d.classList.toggle('on', app.running);
+    d.classList.toggle('busy', app.running && (app.state === 'working' || app.state === 'confirm'));
+  }
+}
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`;
+}
+let bubbleElapsedFrom = 0; // startedAt of the app the bubble currently mirrors
+setInterval(() => {
+  const el = bubble.querySelector('.b-elapsed');
+  if (!el || !bubbleElapsedFrom) return;
+  el.textContent = ` · ${fmtElapsed(Date.now() - bubbleElapsedFrom)}`;
+}, 1000);
+
+function renderPanel(snap) {
+  const rows = $('#panel-rows');
+  rows.innerHTML = '';
+  for (const app of snap.apps || []) {
+    const row = document.createElement('div');
+    row.className = 'p-row' + (app.running ? '' : ' off');
+    if (!app.running) {
+      // not running: dimmed icon + name, muted state chip on the right
+      row.innerHTML =
+        `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
+         <div class="p-main"><div class="p-name">${app.name}</div></div>
+         <div class="p-state off">未运行</div>`;
+      rows.appendChild(row);
+      continue;
+    }
+    const todos = app.state === 'working' && Array.isArray(app.todos) ? app.todos : [];
+    const curTodo = todos.find((x) => x.status === 'in_progress') || todos.find((x) => x.status === 'pending');
+    const sub = app.state === 'working'
+      ? (todos.length && curTodo ? curTodo.content : (app.title || app.detail || ''))
+      : (app.title || '');
+    const elapsed = app.state === 'working' && app.startedAt ? ` · ${fmtElapsed(Date.now() - app.startedAt)}` : '';
+    row.className = 'p-row' + (todos.length ? ' wrap' : '');
+    row.innerHTML =
+      `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
+       <div class="p-main"><div class="p-name">${app.name}</div><div class="p-sub"></div></div>
+       <div class="p-state ${app.state}">${STATE_TEXT[app.state] || app.state}${elapsed}</div>`;
+    row.querySelector('.p-sub').textContent = sub;
+    if (todos.length) {
+      const list = document.createElement('div');
+      list.className = 'p-todos';
+      for (const t of todos.slice(0, 8)) {
+        const cls = t.status === 'completed' ? 'completed' : t.status === 'in_progress' ? 'in_progress' : 'pending';
+        const mark = cls === 'completed' ? '✓' : cls === 'in_progress' ? '▶' : '○';
+        const item = document.createElement('div');
+        item.className = 'p-todo ' + cls;
+        item.innerHTML = `<span class="m">${mark}</span><span class="t"></span>`;
+        item.querySelector('.t').textContent = t.content;
+        list.appendChild(item);
+      }
+      row.appendChild(list);
+    }
+    rows.appendChild(row);
+  }
+}
+
+// ---------------- working ring styles ----------------
+// the ring around the pet; style switchable in settings, colour follows state
+const spinnerEl = $('#spinner');
+const RING_STYLES = new Set(['classic', 'dual', 'dash', 'comet', 'pulse', 'dots', 'dashed', 'rainbow', 'glow', 'sweep']);
+const RING_KIDS = { dots: 3 };
+const AGG_COLOR = {
+  idle: 'rgba(150,168,190,.42)', // soft, translucent — the ring stays visible but calm when idle
+  working: '#4fd8ff', confirm: '#ffd479', done: '#7aa2ff', error: '#ff6b5e',
+};
+const REST_RING = '#7adca0'; // matches the rest reminder card's green
+let ringStyleCur = '';
+function applyRingStyle(name) {
+  name = RING_STYLES.has(name) ? name : 'classic';
+  if (name === ringStyleCur) return;
+  ringStyleCur = name;
+  [...spinnerEl.classList].filter((c) => c.startsWith('rs-')).forEach((c) => spinnerEl.classList.remove(c));
+  spinnerEl.classList.add('rs-' + name);
+  [...spinnerEl.children].forEach((c) => c.remove());
+  const n = RING_KIDS[name] || 0;
+  for (let i = 0; i < n; i++) spinnerEl.appendChild(document.createElement('i'));
+}
+
+// ---------------- interactions ----------------
+// Manual drag (app-region drag swallowed clicks) + click = toggle panel.
+function togglePanel() {
+  panelOpen = !panelOpen;
+  panel.classList.toggle('show', panelOpen);
+  if (panelOpen && lastSnap) renderPanel(lastSnap);
+}
+$('#panel-close').addEventListener('click', (e) => {
+  e.stopPropagation();
+  panelOpen = false;
+  panel.classList.remove('show');
+});
+
+let drag = null;
+const wrap = $('#pet-wrap');
+wrap.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  // overlays overlapping the wrap area must not start a drag/toggle
+  if (stack.contains(e.target) || panel.contains(e.target) || menu.contains(e.target)) return;
+  drag = { x: e.screenX, y: e.screenY, moved: false };
+});
+window.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  const dx = e.screenX - drag.x, dy = e.screenY - drag.y;
+  if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+  if (drag.moved) {
+    window.petbuddy.dragBy(dx, dy);
+    drag.x = e.screenX; drag.y = e.screenY;
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (drag && !drag.moved) {
+    // with several apps running, a click cycles which one the bubble shows
+    const working = (lastSnap?.apps || []).filter(x => x.running && x.state === 'working');
+    if (working.length > 1) cycleBubble();
+    else togglePanel();
+  }
+  if (drag && drag.moved) window.petbuddy.dragEnd();
+  drag = null;
+});
+bubble.addEventListener('click', cycleBubble);
+
+// ---------------- context menu (right-click on the pet) ----------------
+// opener was lost in an earlier script rebuild; menu HTML/CSS survived
+function hideMenu() { menu.style.display = 'none'; }
+wrap.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const mw = menu.offsetWidth || 130, mh = menu.offsetHeight || 130;
+  menu.style.left = Math.max(6, Math.min(e.clientX + 4, window.innerWidth - mw - 6)) + 'px';
+  menu.style.top = Math.max(6, Math.min(e.clientY + 4, window.innerHeight - mh - 6)) + 'px';
+  menu.style.display = 'block';
+});
+menu.addEventListener('click', (e) => {
+  const act = e.target.dataset && e.target.dataset.act;
+  if (!act) return;
+  hideMenu();
+  if (act === 'panel') togglePanel();
+  else if (act === 'settings') window.petbuddy.openSettings();
+  else if (act === 'logs') window.petbuddy.openDataDir();
+  else if (act === 'quit') window.petbuddy.quit();
+});
+window.addEventListener('mousedown', (e) => {
+  if (!menu.contains(e.target)) hideMenu();
+}, true);
+
+// click outside the panel (or focus leaving the pet) closes it
+window.addEventListener('mousedown', (e) => {
+  if (!panelOpen) return;
+  if (panel.contains(e.target) || wrap.contains(e.target) || menu.contains(e.target)) return;
+  panelOpen = false;
+  panel.classList.remove('show');
+});
+window.addEventListener('blur', () => {
+  if (panelOpen) { panelOpen = false; panel.classList.remove('show'); }
+  hideMenu();
+});
+
+// ---------------- toast ----------------
+let toastHideTimer = null;
+function toast(text, ms = 2600) {
+  showToast(text, ms);
+  clearTimeout(toastHideTimer);
+  toastHideTimer = setTimeout(() => { toastUntil = 0; layoutStack(lastSnap || { confirms: [], apps: [] }); }, ms);
+}
+
+
+
+
+// ---------------- sound ----------------
+let audioCtx = null;
+function tone(freq, start, dur, vol = 0.1) {
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = 'sine'; o.frequency.setValueAtTime(freq, audioCtx.currentTime + start);
+  g.gain.setValueAtTime(vol, audioCtx.currentTime + start);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + start + dur);
+  o.start(audioCtx.currentTime + start); o.stop(audioCtx.currentTime + start + dur);
+}
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    tone(880, 0, 0.2); tone(660, 0.12, 0.25);
+  } catch {}
+}
+function chime() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    tone(523, 0, 0.18, 0.09); tone(659, 0.13, 0.18, 0.09); tone(784, 0.26, 0.32, 0.09);
+  } catch {}
+}
+
+// ---------------- boot ----------------
+window.addEventListener('error', (e) => {
+  window.petbuddy.logLine('pet error: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
+});
+window.petbuddy.onState(render);
+window.petbuddy.getState().then(render);
+</script>
+</body>
+</html>

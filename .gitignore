@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.hotreload
+_newscript.js
+# icon.js 的重生成标记（运行时产物）
+assets/.eve-*
+assets/.panda-*
+.DS_Store
+Thumbs.db

@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>PetBuddy 设置</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #1d1f27; color: #dde;
+    font-size: 13px; }
+  header { padding: 12px 18px 10px; font-size: 16px; font-weight: 700; border-bottom: 1px solid #ffffff14;
+    display: flex; align-items: baseline; gap: 8px; -webkit-app-region: drag; }
+  header img { width: 20px; height: 20px; align-self: center; }
+  header small { color: #778; font-weight: 400; }
+  #win-btns { margin-left: auto; -webkit-app-region: no-drag; display: flex; gap: 6px; align-self: center; }
+  #win-btns button { width: 30px; height: 26px; border: 0; border-radius: 7px; background: #ffffff12;
+    color: #aab; cursor: pointer; font-size: 13px; line-height: 1; }
+  #win-btns button:hover { background: #ffffff26; color: #fff; }
+  #win-btns #win-close:hover { background: #c0483f; color: #fff; }
+  nav { display: flex; gap: 4px; padding: 10px 18px 0; }
+  nav button { background: none; border: 0; color: #99a; padding: 6px 12px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; }
+  nav button.active { background: #ffffff14; color: #fff; }
+  main { padding: 14px 18px 74px; height: calc(100vh - 96px); overflow-y: auto; }
+  main::-webkit-scrollbar { width: 7px; }
+  main::-webkit-scrollbar-thumb { background: #ffffff20; border-radius: 4px; }
+  main::-webkit-scrollbar-thumb:hover { background: #ffffff32; }
+  main::-webkit-scrollbar-track { background: transparent; }
+  section { display: none; } section.active { display: block; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .row label:first-child { width: 130px; color: #aab; flex-shrink: 0; }
+  .row input[type=range] { flex: 1; }
+  .row .val { width: 42px; text-align: right; color: #99a; font-size: 12px; }
+  input[type=text], input[type=number], select {
+    background: #14161d; border: 1px solid #ffffff22; color: #dde; border-radius: 7px;
+    padding: 5px 9px; font-size: 12.5px; outline: none; flex: 1; min-width: 0;
+  }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: #7aa2ff; }
+  button.act { background: #2e5bd7; color: #fff; border: 0; border-radius: 8px; padding: 6px 14px;
+    cursor: pointer; font-size: 12.5px; }
+  button.act:hover { filter: brightness(1.15); }
+  button.ghost { background: #ffffff12; }
+  h4 { margin: 16px 0 4px; color: #7aa2ff; font-size: 12.5px; letter-spacing: .5px; }
+  .hint { color: #667; font-size: 11.5px; padding: 2px 0 6px; }
+  .tab-intro { background: #14161d; border: 1px solid #ffffff10; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 10px; }
+  .intro-main { color: #c8cddb; font-size: 12px; line-height: 1.65; }
+  .intro-main b { color: #fff; }
+  .kv { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 9px; }
+  .kv-i { color: #889; font-size: 11px; background: #ffffff0a; border-radius: 7px; padding: 4px 9px;
+    display: inline-flex; align-items: center; gap: 3px; }
+  .kv-i b { color: #7fd7a0; font-weight: 600; }
+  .kv-i code, .intro-note code { background: #ffffff14; color: #9db9ff; border-radius: 5px;
+    padding: 1px 5px; font-size: 10.5px; font-family: Consolas, ui-monospace, monospace; }
+  .intro-note { color: #667; font-size: 11px; line-height: 1.6; margin-top: 9px; }
+  /* beginner walkthrough */
+  .howto { margin: 10px 0 0 16px; color: #c8cddb; font-size: 11.5px; line-height: 1.85; }
+  .howto li { margin: 0 0 2px; }
+  .howto b { color: #fff; }
+  .howto code, .intro-note code { background: #ffffff14; color: #9db9ff; border-radius: 5px;
+    padding: 1px 5px; font-size: 10.5px; font-family: Consolas, ui-monospace, monospace; }
+  /* hover explanations: <span class="tip" data-tip="…">文字</span> */
+  .tip { position: relative; cursor: default; border-bottom: 1px dashed #ffffff3d; }
+  .tip:hover { color: #dfe4f2; }
+  /* the bubble is a real child element positioned with position:fixed so JS can
+     measure it and clamp it to the viewport — an ::after bubble could neither
+     be measured nor escape a clipping ancestor */
+  .tip-b { position: fixed; z-index: 60; width: max-content; max-width: 265px; white-space: normal;
+    text-align: left; background: #22242e; color: #cdd3e1; border: 1px solid #ffffff24;
+    border-radius: 9px; padding: 8px 10px; font-size: 11px; line-height: 1.65; font-weight: 400;
+    letter-spacing: 0; box-shadow: 0 10px 26px rgba(0,0,0,.65); display: none; pointer-events: none; }
+  .tip.wide > .tip-b { max-width: 330px; }
+  .app-card { background: #14161d; border: 1px solid #ffffff12; border-radius: 12px;
+    padding: 12px 14px; margin-top: 10px; }
+  .app-head { display: flex; align-items: center; gap: 8px; }
+  .app-head .name { font-weight: 700; flex: 1; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 8px; }
+  .badge.ok { background: #2e9e5b33; color: #7fd7a0; }
+  .badge.no { background: #c0483f33; color: #ff9d94; }
+  .badge.off { background: #ffffff12; color: #99a; }
+  .keys { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+  .keys label { width: 56px; color: #99a; font-size: 12px; flex-shrink: 0; }
+  .keys input { font-family: Consolas, monospace; }
+  .keys button { flex-shrink: 0; }
+  /* per-app edit panel, opened from the 修改 button in the card header */
+  .edit-panel { margin-top: 8px; padding: 4px 10px 10px; background: #ffffff07;
+    border: 1px solid #ffffff12; border-radius: 10px; }
+  .edit-panel .frow { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
+  .edit-panel .frow label { width: 92px; color: #99a; font-size: 12px; flex-shrink: 0; }
+  .app-head .act.on { background: #ffffff24; color: #9db9ff; box-shadow: inset 0 0 0 1px #ffffff26; }
+  .app-head .del { background: #c0483f22; color: #ff9d94; padding: 6px 9px; }
+  .pd-card { background: #14161d; border: 1px solid #ffffff12; border-radius: 12px;
+    padding: 12px 14px; margin-top: 12px; }
+  .pd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .pd-title { font-weight: 700; font-size: 13px; }
+  .pd-sub { color: #667; font-size: 11px; flex: 1; }
+  #petdex-link { color: #7aa2ff; text-decoration: none; cursor: pointer; }
+  #petdex-link:hover { text-decoration: underline; }
+  .pd-search { display: flex; gap: 6px; }
+  .pd-search input { flex: 1; padding-right: 26px; }
+  #petdex-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 20px; border: 0; border-radius: 50%; background: #ffffff20; color: #99a;
+    cursor: pointer; font-size: 11px; line-height: 1; display: none; }
+  #petdex-clear:hover { background: #ffffff32; color: #fff; }
+  .pd-label { color: #667; font-size: 11px; }
+  .pd-installed { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .pet-chip { padding-right: 12px; }
+  .pet-chip.del { padding-right: 28px; border-color: #c0483f99; background: #c0483f1f; }
+  .pet-del { position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.85);
+    background: #e0524a; color: #fff; cursor: pointer; font-size: 11px; font-weight: 700;
+    line-height: 1; padding: 0; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 5px rgba(0,0,0,.55); }
+  .pet-del:hover { background: #ff6b60; }
+  #petdex-delmode.del-active { background: #c0483f; color: #fff; }
+  #add-form { background: #14161d; border: 1px dashed #ffffff2c; border-radius: 12px;
+    padding: 12px 14px; margin-top: 12px; display: none; }
+  #add-form.open { display: block; }
+  #add-form .frow { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
+  #add-form .frow label { width: 92px; color: #99a; font-size: 12px; flex-shrink: 0; }
+  #add-form input[type=color] { width: 44px; height: 26px; padding: 0; border: 1px solid #ffffff22;
+    border-radius: 6px; background: none; }
+  #add-form .sub { color: #667; font-size: 11px; margin-top: 4px; }
+  h4 { margin: 16px 0 4px; color: #7aa2ff; font-size: 12.5px; letter-spacing: .5px; }
+  #save-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    padding: 11px 18px; background: #1d1f27; border-top: 1px solid #ffffff14;
+    display: flex; gap: 10px; justify-content: flex-end; }
+  #msg { color: #7fd7a0; font-size: 12px; align-self: center; margin-right: auto; }
+</style>
+</head>
+<body>
+<header><img src="assets/icon.ico" alt=""> PetBuddy <small id="ver"></small>
+  <div id="win-btns">
+    <button id="win-min" title="最小化">—</button>
+    <button id="win-close" title="关闭">✕</button>
+  </div>
+</header>
+<nav>
+  <button data-tab="appearance" class="active">外观</button>
+  <button data-tab="behavior">行为</button>
+  <button data-tab="integrations">应用集成</button>
+  <button data-tab="system">系统</button>
+</nav>
+<main>
+  <section id="appearance" class="active">
+    <div class="row"><label>大小</label><input type="range" id="scale" min="0.5" max="2" step="0.05"><span class="val" id="scale-v"></span></div>
+    <div class="row"><label>不透明度</label><input type="range" id="opacity" min="0.3" max="1" step="0.05"><span class="val" id="opacity-v"></span></div>
+    <div class="row"><label>动作速度</label><input type="range" id="animSpeed" min="0" max="2" step="0.1"><span class="val" id="animSpeed-v"></span></div>
+    <div class="row"><label>背景速度</label><input type="range" id="bgSpeed" min="0.5" max="2" step="0.1"><span class="val" id="bgSpeed-v"></span></div>
+    <div class="row"><label>圆环样式</label><select id="ringStyle" title="宠物工作时光环的样式,颜色随任务状态变化(运行中=青/待确认=黄/完成=蓝/出错=红)">
+      <option value="classic">经典光弧</option>
+      <option value="dual">双环反转</option>
+      <option value="dash">缺口旋转</option>
+      <option value="comet">彗尾追踪</option>
+      <option value="pulse">脉冲外扩</option>
+      <option value="dots">追光三点</option>
+      <option value="dashed">虚线段环</option>
+      <option value="rainbow">彩虹流转</option>
+      <option value="glow">辉光呼吸</option>
+      <option value="sweep">双向扫描</option>
+    </select></div>
+    <div class="row"><label>精灵样式</label>
+      <select id="sprite">
+        <option value="eve">EVE(默认)</option>
+        <option value="petdex:tiko" data-preset="1">Tiko</option>
+        <option value="blob">团子猫</option>
+        <option value="custom">自定义图片(GIF/PNG)</option>
+      </select>
+    </div>
+    <div class="pd-card">
+      <div class="pd-head">
+        <span class="pd-title">Petdex 形象库</span>
+        <span class="pd-sub"><a href="#" id="petdex-link">petdex.dev</a> · 导入后自动适配全部动作</span>
+        <button class="act ghost" id="petdex-delmode" title="进入删除模式:再点目标形象上的 ✕ 移除">−</button>
+      </div>
+      <div class="pd-search">
+        <div style="position:relative;flex:1;display:flex">
+          <input type="text" id="petdex-name" placeholder="搜索或输入 slug, 支持中文">
+          <button id="petdex-clear" title="清除">✕</button>
+        </div>
+        <button class="act" id="petdex-import">导入</button>
+      </div>
+      <div id="petdex-cands" style="display:none;flex-wrap:wrap;gap:6px;padding:4px 0 2px;align-items:center">
+        <span class="pd-label">候选:</span>
+      </div>
+      <div class="pd-installed">
+        <span class="pd-label">已导入:</span>
+        <span id="petdex-none" class="pd-label">暂无,搜索上面输入框导入</span>
+        <span id="petdex-list" style="display:inline-flex;flex-wrap:wrap;gap:6px"></span>
+      </div>
+
+    </div>
+      <div class="row" style="margin-top:10px"><label>总在最前</label><input type="checkbox" id="alwaysOnTop" title="让桌宠窗口保持在其他窗口之上"></div>
+      <div class="row"><label>状态气泡</label><input type="checkbox" id="bubbleEnabled" title="桌宠头顶的状态气泡"></div>
+      <div class="row"><label>背景圆环</label><input type="checkbox" id="showRing" title="运行时桌宠背后的旋转圆环"></div>
+      <div class="row"><label>应用圆点</label><input type="checkbox" id="showDots" title="桌宠脚下的四个应用状态点"></div>
+
+    <div class="row" id="custom-row" style="display:none"><label>图片路径</label>
+      <input type="text" id="customSpritePath" placeholder="D:\\pics\\pet.gif">
+    </div>
+  </section>
+
+  <section id="behavior">
+    <div class="row"><label>无应用时隐藏</label><input type="checkbox" id="autoHideWhenNoApp" title="四个应用都关闭后自动藏起桌宠"></div>
+    <div class="row"><label>无应用时退出</label><input type="checkbox" id="quitWhenNoApp" title="彻底退出进程(配合开机自启使用)"></div>
+    <div class="row"><label>隐藏延迟(秒)</label><input type="number" id="hideDelaySec" min="0" max="600" style="max-width:90px" title="最后一个应用关闭后,等待多少秒再隐藏"></div>
+    <div class="row"><label>确认提示音</label><input type="checkbox" id="confirmSound" title="收到任务确认/完成/出错提示时播放音效"></div>
+    <div class="row"><label>确认卡超时(秒)</label><input type="number" id="confirmTimeoutSec" min="15" max="3600" style="max-width:90px" title="任务确认卡超过该秒数自动消失"></div>
+    <div class="row"><label>无响应判定(秒)</label><input type="number" id="stallSec" min="0" max="3600" style="max-width:90px" title="运行中超过该秒数的2倍仍无任何事件,且应用进程已消失,才判定任务中断并提示(0=关闭;思考/重连期间的静默不算)"></div>
+    <div class="row"><label>常驻显示</label><input type="checkbox" id="pinned" title="开启后桌宠常驻屏幕,不会因无应用运行而自动隐藏"></div>
+    <div class="row"><label>休息提醒</label><input type="checkbox" id="restRemindEnabled" title="桌宠定时提醒休息,需点击确认"></div>
+    <div class="row"><label>提醒间隔(分钟)</label><input type="number" id="restRemindMin" min="1" max="720" style="max-width:90px" title="每隔多少分钟提醒一次休息">
+      <label style="width:auto" title="点了知道了之后,多少分钟内不再提醒">贪睡(分钟)</label><input type="number" id="restSnoozeMin" min="1" max="120" style="max-width:90px"></div>
+  </section>
+
+  <section id="integrations">
+    <div class="tab-intro">
+      <div class="intro-main">让桌宠显示某个应用的
+        <span class="tip wide" data-tip="「安装接入」＝往该应用的配置文件里写入钩子：它每做一个动作（开始处理、调用工具、等待确认、结束）都会执行一次 pet-bridge.cmd，把状态通过本地 HTTP 发给桌宠。桌宠不开外网，只在 127.0.0.1 上监听。">任务状态</span>，分三步：</div>
+      <ol class="howto">
+        <li>点下方「<b>➕ 添加应用</b>」，只填 <b>应用 ID</b> 和 <b>显示名称</b>，保存。</li>
+        <li>在下面这个应用的卡片上点「<b>安装接入</b>」——钩子会自动写好，不用手动改配置。</li>
+        <li>重启一次那个应用（或新开一个会话），它一开始干活，桌宠就会亮起状态。</li>
+      </ol>
+      <div class="kv">
+        <span class="kv-i"><span class="tip" data-tip="桌宠的本地 HTTP 服务端口。你也可以让应用直接 POST http://127.0.0.1:<端口>/api/event 上报状态（不用装钩子）。">API 端口</span> <b id="port"></b></span>
+        <span class="kv-i"><span class="tip wide" data-tip="在桌宠上点「允许 / 拒绝」时发给该应用窗口的按键。{ENTER}＝回车、{ESC}＝Esc；用 ~~ 分隔多步，例如 1~~{ENTER}＝先按 1 再回车。">按键示例</span> <code>{ENTER}</code><code>1~~{ENTER}</code><code>{ESC}</code></span>
+        <span class="kv-i"><span class="tip wide" data-tip="高级用法：直接编辑这个文件（每个应用的 ID、颜色、按键、接入方式都在里面），保存后回这里点「重新扫描应用」。">配置文件</span> <code>~/.petbuddy/apps.config.json</code></span>
+      </div>
+      <div class="intro-note">WorkBuddy / ZCode / Codex / DSH 已经预置好了，直接点它们的「安装接入」即可；<span class="tip wide" data-tip="镜像模式：不装钩子，应用自己上报状态。适合自己写脚本/插件、或钩子机制不兼容的应用 —— 只要往 /api/event 发一条 JSON 就会自动注册并出现在桌宠上。">没有钩子机制的应用</span>可以用镜像模式让它直接 <code>POST /api/event</code>。</div>
+    </div>
+    <div style="margin-top:8px">
+      <button class="act ghost" id="rescan" title="重新读取 apps.config.json。手动改过配置文件、或应用自动注册后想立刻看到，就点这里">🔄 重新扫描应用</button>
+      <button class="act" id="show-add" title="添加一个桌宠要跟踪的应用（填 ID 和名称即可，其余可留空）">➕ 添加应用</button>
+    </div>
+    <div id="add-form">
+      <div class="sub" style="margin:0 0 8px">只填前两项就能用，其余留空即可；鼠标悬浮每一项都有说明。</div>
+      <div class="frow"><label><span class="tip wide" data-tip="唯一标识，小写字母 / 数字 / 连字符，例如 mytool。会写进配置文件、也用于 API 地址；应用自己注册时用的也是这个名字。">应用 ID *</span></label><input type="text" id="na-id" placeholder="mytool (小写字母/数字/连字符)"></div>
+      <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字，随便起，例如 MyTool。">显示名称</span></label><input type="text" id="na-name" placeholder="MyTool"></div>
+      <div class="frow"><label><span class="tip wide" data-tip="桌宠下方那排小圆点的颜色，用来一眼区分是哪个应用在干活。">圆点颜色</span></label><input type="color" id="na-color" value="#9aa4b2">
+        <label style="width:auto"><span class="tip wide" data-tip="可选。填 PNG/SVG/ICO 的绝对路径，桌宠面板里就用这个图标；不填则显示彩色圆点。">图标路径</span></label><input type="text" id="na-icon" placeholder="可选, PNG/SVG 绝对路径"></div>
+      <div class="frow"><label><span class="tip wide" data-tip="可选。该应用在任务管理器里的进程名，多个用逗号分隔，如 MyApp.exe,myappd.exe。填了桌宠才能判断它是否正在运行（没填也不影响钩子上报状态）。">进程名</span></label><input type="text" id="na-proc" placeholder="可选, 逗号分隔, 如 MyApp.exe,myappd.exe"></div>
+      <div class="frow"><label><span class="tip wide" data-tip="可选。该应用在本地监听的端口，如 8080。桌宠会探测端口来判断它是否还活着（有些应用没有进程名，只能靠端口）。">探测端口</span></label><input type="text" id="na-port" placeholder="可选, 逗号分隔, 如 8080"></div>
+      <div class="frow"><label><span class="tip wide" data-tip="在桌宠上点「允许」时，向该应用窗口发送的按键序列。SendKeys 语法：{ENTER} 回车、{ESC} Esc、{TAB} Tab；用 ~~ 分隔多步，例如 1~~{ENTER}。留空则只记录决定、不按键。">允许按键</span></label><input type="text" id="na-approve" placeholder="{ENTER}">
+        <label style="width:auto"><span class="tip wide" data-tip="在桌宠上点「拒绝」时发送的按键，通常填 {ESC}（多数 CLI 用它取消）。">拒绝按键</span></label><input type="text" id="na-deny" placeholder="{ESC}"></div>
+      <div class="frow"><label><span class="tip wide" data-tip="推荐「自动接入」：桌宠直接往该应用的配置文件里写钩子，开始/工具调用/待确认/结束都会上报，事件最全、状态最准（WorkBuddy/ZCode/Codex/DSH 都是这种方式）。「镜像模式」适合没有钩子机制的应用：需要它自己 POST /api/event，桌宠只能被动接收。">接入方式</span></label>
+        <select id="na-style">
+          <option value="claude-file">自动接入（推荐）: 写入 Claude 风格 hooks 文件</option>
+          <option value="none">手动接入（镜像模式）: 应用自己 POST /api/event</option>
+        </select></div>
+      <div id="na-claude">
+        <div class="frow"><label><span class="tip wide" data-tip="该应用的钩子配置文件的绝对路径，例如 ~/.myapp/hooks.json。桌宠会把 pet-bridge 命令写进它的 hooks 段。">配置文件</span></label><input type="text" id="na-cfgpath" placeholder="如 ~/.myapp/hooks.json"></div>
+        <div class="frow"><label><span class="tip wide" data-tip="该应用期望的事件名格式：有的用 PascalCase(SessionStart)，有的用 kebab-case(session-start)。不确定就两种都试，装了没反应大概率是这个选错了。">事件名风格</span></label>
+          <select id="na-case"><option value="pascal">PascalCase (SessionStart)</option><option value="kebab">kebab-case (session-start)</option></select>
+          <label style="width:auto"><span class="tip wide" data-tip="勾选=新建一个只含 hooks 的 JSON 文件；不勾=把 hooks 键合并进已存在的设置文件（更安全，不会覆盖原有内容）。">独立文件</span></label><input type="checkbox" id="na-standalone" checked></div>
+        <div class="sub">独立文件=只含 hooks 的 json;不勾=把 hooks 键合并进已存在的设置文件</div>
+      </div>
+      <div class="frow" style="justify-content:flex-end">
+        <button class="act ghost" id="na-cancel" title="放弃这个应用，不写入任何配置">取消</button>
+        <button class="act" id="na-save" title="写入 apps.config.json；保存后可在卡片上点「安装接入」装钩子">保存应用</button>
+      </div>
+    </div>
+    <div id="app-cards"></div>
+  </section>
+
+  <section id="system">
+    <div class="row"><label>开机自动启动</label><input type="checkbox" id="autoStart" title="登录 Windows 后驻留后台,任一应用打开即出现">
+      </div>
+    <div class="row"><label>启动时隐藏</label><input type="checkbox" id="startHidden" title="开机后桌宠先隐藏,有应用运行时才出现"></div>
+    <div class="row"><label>数据目录</label><button class="act ghost" id="open-data" title="配置、形象与日志都在这里">打开 ~/.petbuddy</button></div>
+  </section>
+
+  <div id="save-bar">
+    <span id="msg"></span>
+    <button class="act" id="save">保存</button>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let cfg = null, autostartNow = false, integStatus = {}, metaList = [];
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+function appIco(app, size) {
+  return app.icon
+    ? `<img src="${app.icon}" style="width:${size || 16}px;height:${size || 16}px;vertical-align:-3px;border-radius:3px">`
+    : app.emoji || '🍡';
+}
+
+// tabs (外观 auto-applies — no save bar needed there)
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('main section').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  $('#' + b.dataset.tab).classList.add('active');
+  $('#save-bar').style.display = b.dataset.tab === 'appearance' ? 'none' : 'flex';
+});
+
+function bindRange(id, key) {
+  const el = $('#' + id), v = $('#' + id + '-v');
+  el.value = cfg.appearance[key];
+  v.textContent = cfg.appearance[key];
+  let t = null;
+  el.oninput = () => {
+    v.textContent = el.value;
+    cfg.appearance[key] = parseFloat(el.value);
+    clearTimeout(t); // debounce live apply (patchSettings persists immediately)
+    t = setTimeout(() => window.petbuddy.patchSettings({ appearance: { [key]: cfg.appearance[key] } }), 150);
+  };
+}
+
+function loadIntoUi() {
+  bindRange('scale', 'scale');
+  bindRange('opacity', 'opacity');
+  bindRange('animSpeed', 'animationSpeed');
+  bindRange('bgSpeed', 'bgSpeed');
+  syncSpriteSelect();
+  $('#ringStyle').value = cfg.appearance.ringStyle || 'classic';
+  $('#ringStyle').onchange = () => {
+    cfg.appearance.ringStyle = $('#ringStyle').value;
+    window.petbuddy.patchSettings({ appearance: { ringStyle: cfg.appearance.ringStyle } });
+  };
+  $('#custom-row').style.display = cfg.appearance.sprite === 'custom' ? '' : 'none';
+  $('#customSpritePath').value = cfg.appearance.customSpritePath || '';
+  $('#alwaysOnTop').checked = cfg.appearance.alwaysOnTop;
+  $('#bubbleEnabled').checked = cfg.appearance.bubbleEnabled !== false;
+  $('#showRing').checked = cfg.appearance.showRing !== false;
+  $('#showDots').checked = cfg.appearance.showDots !== false;
+  $('#alwaysOnTop').onchange = () => {
+    cfg.appearance.alwaysOnTop = $('#alwaysOnTop').checked;
+    window.petbuddy.patchSettings({ appearance: { alwaysOnTop: cfg.appearance.alwaysOnTop } });
+  };
+  $('#bubbleEnabled').onchange = () => {
+    cfg.appearance.bubbleEnabled = $('#bubbleEnabled').checked;
+    window.petbuddy.patchSettings({ appearance: { bubbleEnabled: cfg.appearance.bubbleEnabled } });
+  };
+  $('#showRing').onchange = () => {
+    cfg.appearance.showRing = $('#showRing').checked;
+    window.petbuddy.patchSettings({ appearance: { showRing: cfg.appearance.showRing } });
+  };
+  $('#showDots').onchange = () => {
+    cfg.appearance.showDots = $('#showDots').checked;
+    window.petbuddy.patchSettings({ appearance: { showDots: cfg.appearance.showDots } });
+  };
+
+  $('#autoHideWhenNoApp').checked = cfg.behavior.autoHideWhenNoApp;
+  $('#quitWhenNoApp').checked = cfg.behavior.quitWhenNoApp;
+  $('#hideDelaySec').value = cfg.behavior.hideDelaySec;
+  $('#confirmSound').checked = cfg.behavior.confirmSound;
+  $('#confirmTimeoutSec').value = cfg.behavior.confirmTimeoutSec;
+  $('#stallSec').value = cfg.behavior.stallSec !== undefined ? cfg.behavior.stallSec : 180;
+  $('#restRemindEnabled').checked = !!cfg.behavior.restRemindEnabled;
+  $('#restRemindMin').value = cfg.behavior.restRemindMin !== undefined ? cfg.behavior.restRemindMin : 45;
+  $('#restSnoozeMin').value = cfg.behavior.restSnoozeMin !== undefined ? cfg.behavior.restSnoozeMin : 5;
+  window.petbuddy.getState().then((snap) => { $('#pinned').checked = !!snap.pinned; });
+
+  $('#autoStart').checked = autostartNow;
+  $('#startHidden').checked = cfg.system.startHidden;
+
+  renderAppCards();
+}
+$('#sprite').onchange = () => {
+  const v = $('#sprite').value;
+  // every value except the petdex pseudo slot is a real choice and must be
+  // written back to cfg, otherwise later switches would do nothing
+  if (v && v !== 'petdex') cfg.appearance.sprite = v;
+  $('#custom-row').style.display = v === 'custom' ? '' : 'none';
+  // no __preview: sprite choices must persist like every other appearance field
+  window.petbuddy.patchSettings({ appearance: { sprite: cfg.appearance.sprite } });
+  syncSpriteSelect();
+  renderPetdexList(); // refresh the ✓ marks: none when a non-petdex sprite is in use
+};
+
+let petNames = {}; // slug -> displayName (filled by loadPetdexSpriteOptions)
+
+function syncSpriteSelect() {
+  const sel = $('#sprite');
+  const cur = String(cfg.appearance.sprite || 'eve');
+  const slug = cur.startsWith('petdex:') ? cur.slice(7) : '';
+  const ownOption = [...sel.options].find((o) => o.value === cur && !o.dataset.dyn);
+  let dyn = sel.querySelector('option[data-dyn]');
+  if (slug && !ownOption) {
+    // a single petdex slot in the list, its label follows the pet in use
+    if (!dyn) {
+      dyn = document.createElement('option');
+      dyn.dataset.dyn = '1';
+      sel.insertBefore(dyn, sel.querySelector('option[value="custom"]'));
+    }
+    dyn.value = cur;
+    dyn.textContent = 'Petdex: ' + (petNames[slug] || slug);
+    dyn.hidden = false;
+    dyn.disabled = false;
+    sel.value = cur;
+  } else {
+    if (dyn) { dyn.hidden = true; dyn.disabled = true; }
+    sel.value = ownOption ? cur : 'eve';
+  }
+  $('#custom-row').style.display = cur === 'custom' ? '' : 'none';
+}
+
+/** Preset "Tiko" is only selectable while that pet is installed; the single
+ *  petdex slot mirrors whichever other pet is currently in use. */
+async function loadPetdexSpriteOptions() {
+  const r = await window.petbuddy.petdexList().catch(() => null);
+  petNames = {};
+  const installed = new Set();
+  if (r && r.ok && (r.pets || []).length) {
+    for (const p of r.pets) { petNames[p.slug] = p.displayName || p.slug; installed.add(p.slug); }
+  }
+  const sel = $('#sprite');
+  for (const o of [...sel.querySelectorAll('option[data-preset]')]) {
+    const slug = String(o.value).startsWith('petdex:') ? o.value.slice(7) : '';
+    if (!slug) continue;
+    const ok = installed.has(slug);
+    o.disabled = !ok;
+    o.textContent = (petNames[slug] || slug) + (ok ? '' : '（未安装）');
+  }
+  syncSpriteSelect();
+}
+
+function renderAppCards() {
+  const wrap = $('#app-cards');
+  wrap.innerHTML = '';
+  for (const meta of metaList) {
+    const st = integStatus[meta.id] || {};
+    const enabled = cfg.integrations.enabled[meta.id] !== false;
+    const keys = (cfg.keys && cfg.keys[meta.id]) || {};
+    const card = document.createElement('div');
+    card.className = 'app-card';
+    const badgeTip = !enabled
+      ? '已停用:桌宠忽略这个应用的所有事件（已写入的钩子不会被删除）'
+      : st.installed
+        ? '已接入:钩子已写进该应用的配置，它干活时会实时同步状态到桌宠'
+        : st.manual
+          ? '镜像模式:不装钩子，由该应用自己 POST /api/event 上报状态'
+          : '未接入:还没有装钩子，点右边的「安装接入」自动写入即可';
+    card.innerHTML = `
+      <div class="app-head">
+        <span>${appIco(meta)}</span><span class="name">${esc(meta.name)}</span>
+        <span class="badge ${!enabled ? 'off' : st.installed ? 'ok' : 'no'}" title="${esc(badgeTip)}">
+          ${!enabled ? '已停用' : st.installed ? '已接入' : st.manual ? '镜像' : '未接入'}</span>
+        <button class="act ghost" data-a="edit" title="修改这个应用:显示名称、圆点颜色、图标、进程名、探测端口、确认按键">修改</button>
+        <button class="act ghost" data-a="toggle" title="${enabled ? '临时忽略这个应用的事件,不影响已装的钩子' : '恢复接收这个应用的事件'}">${enabled ? '停用' : '启用'}</button>
+        ${st.manual ? '' : `<button class="act" data-a="${st.installed ? 'uninstall' : 'install'}" title="${st.installed ? '移除写入该应用配置里的钩子(原始文件有备份)' : '自动把桌宠的钩子写进这个应用的配置文件,装完重启一次该应用'}">${st.installed ? '卸载接入' : '安装接入'}</button>`}
+        ${meta.deletable ? '<button class="act del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">🗑</button>' : ''}
+      </div>
+      <div class="edit-panel" hidden>
+        <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字。">显示名称</span></label><input data-e="name" value="${esc(meta.name)}"></div>
+        <div class="frow"><label><span class="tip wide" data-tip="桌宠下方小圆点的颜色,用来区分应用。">圆点颜色</span></label><input type="color" data-e="color" value="${esc(meta.color || '#9aa4b2')}">
+          <label style="width:auto"><span class="tip wide" data-tip="可选。PNG/SVG/ICO 的绝对路径;留空显示彩色圆点。">图标路径</span></label><input data-e="icon" value="${esc(meta.icon || '')}" placeholder="可选, PNG/SVG 绝对路径"></div>
+        <div class="frow"><label><span class="tip wide" data-tip="该应用在任务管理器里的进程名,逗号分隔(如 MyApp.exe,myappd.exe)。用于判断它是否在运行。">进程名</span></label><input data-e="processNames" value="${esc((meta.processNames || []).join(', '))}" placeholder="可选, 逗号分隔"></div>
+        <div class="frow"><label><span class="tip wide" data-tip="该应用监听的本地端口,逗号分隔(如 8080)。有些应用没有进程名,靠端口判断存活。">探测端口</span></label><input data-e="ports" value="${esc((meta.ports || []).join(', '))}" placeholder="可选, 逗号分隔"></div>
+        <div class="keys"><label><span class="tip wide" data-tip="这个应用专属的按键:在桌宠上点「允许」时发给它的窗口。留空则用默认值。">允许按键</span></label><input data-k="approve" value="${esc(keys.approve ?? st.defaultApprove ?? '')}"><button class="act ghost" data-t="approve" title="立刻向该应用窗口发送这串按键,验证能否点到它的按钮">测试</button></div>
+        <div class="keys"><label><span class="tip wide" data-tip="这个应用专属的按键:在桌宠上点「拒绝」时发给它的窗口,常见是 {ESC}。">拒绝按键</span></label><input data-k="deny" value="${esc(keys.deny ?? st.defaultDeny ?? '')}"><button class="act ghost" data-t="deny" title="立刻向该应用窗口发送这串按键,验证能否取消">测试</button></div>
+        <div class="frow" style="justify-content:flex-end">
+          <button class="act ghost" data-a="edit-cancel">取消</button>
+          <button class="act" data-a="edit-save" title="写入 apps.config.json,桌宠立即生效">保存</button>
+        </div>
+      </div>
+      <div class="hint">${esc(st.hint || '')}</div>`;
+    const editPanel = card.querySelector('.edit-panel');
+    const editBtn = card.querySelector('[data-a=edit]');
+    editBtn.onclick = () => {
+      editPanel.hidden = !editPanel.hidden;
+      editBtn.classList.toggle('on', !editPanel.hidden);
+    };
+    card.querySelector('[data-a=edit-cancel]').onclick = () => {
+      editPanel.hidden = true;
+      editBtn.classList.remove('on');
+    };
+    card.querySelector('[data-a=edit-save]').onclick = async () => {
+      const val = (k) => {
+        const el = card.querySelector(`[data-e="${k}"]`);
+        return el ? el.value : '';
+      };
+      const list = (k) => val(k).split(',').map((x) => x.trim()).filter(Boolean);
+      const patch = {
+        name: val('name').trim() || meta.name,
+        color: val('color'),
+        icon: val('icon').trim(),
+        processNames: list('processNames'),
+        ports: list('ports').map((n) => parseInt(n, 10)).filter((n) => n > 0),
+      };
+      const newKeys = {
+        approve: card.querySelector('[data-k=approve]').value,
+        deny: card.querySelector('[data-k=deny]').value,
+      };
+      const r = await window.petbuddy.updateApp(meta.id, patch);
+      cfg.keys = cfg.keys || {};
+      cfg.keys[meta.id] = newKeys;
+      await window.petbuddy.patchSettings({ keys: cfg.keys });
+      flash(r.ok ? `${patch.name} 已更新` : '保存失败: ' + (r.error || ''));
+      if (r.ok) {
+        editPanel.hidden = true;
+        editBtn.classList.remove('on');
+        await refreshStatus();
+      }
+    };
+    card.querySelector('[data-a=toggle]').onclick = async () => {
+      cfg.integrations.enabled[meta.id] = !enabled;
+      await save(); await refreshStatus();
+    };
+    const delBtn = card.querySelector('[data-a=del]');
+    if (delBtn) delBtn.onclick = async () => {
+      if (!confirm(`删除应用 ${meta.name}? 其接入配置不会被卸载,可手动清理。`)) return;
+      const r = await window.petbuddy.deleteApp(meta.id);
+      flash(r.ok ? '已删除' : '失败: ' + (r.error || ''));
+      await refreshStatus();
+    };
+    const installBtn = card.querySelector('.app-head .act:not(.ghost):not(.del)');
+    if (installBtn) installBtn.onclick = async (e) => {
+      e.target.disabled = true;
+      const action = st.installed ? 'uninstall' : 'install';
+      const r = await window.petbuddy.integration(action, meta.id);
+      flash(r.ok ? `${meta.name} ${action === 'install' ? '接入完成' : '已卸载'}` : '失败: ' + (r.error || ''));
+      await refreshStatus();
+      e.target.disabled = false;
+    };
+    card.querySelectorAll('[data-t]').forEach(btn => btn.onclick = async () => {
+      const seq = card.querySelector(`[data-k="${btn.dataset.t}"]`).value;
+      const r = await window.petbuddy.testKeys(meta.id, seq);
+      flash(r.sent ? '按键已发送,请观察目标应用' : '发送失败: ' + (r.error || '未找到窗口'));
+    });
+    wrap.appendChild(card);
+  }
+}
+
+function collectPatch() {
+  // a petdex: sprite is managed by the import list, not the select — keep it;
+  // never write an empty select value (that would render the fallback blob)
+  const selVal = $('#sprite').value;
+  if (selVal && !String(cfg.appearance.sprite || '').startsWith('petdex:')) {
+    cfg.appearance.sprite = selVal;
+  }
+  cfg.appearance.scale = parseFloat($('#scale').value);
+  cfg.appearance.opacity = parseFloat($('#opacity').value);
+  cfg.appearance.animationSpeed = parseFloat($('#animSpeed').value);
+  cfg.appearance.bgSpeed = parseFloat($('#bgSpeed').value);
+  cfg.appearance.ringStyle = $('#ringStyle').value;
+  cfg.appearance.sprite = $('#sprite').value;
+  cfg.appearance.customSpritePath = $('#customSpritePath').value.trim();
+  cfg.appearance.alwaysOnTop = $('#alwaysOnTop').checked;
+  cfg.appearance.bubbleEnabled = $('#bubbleEnabled').checked;
+
+  cfg.behavior.autoHideWhenNoApp = $('#autoHideWhenNoApp').checked;
+  cfg.behavior.quitWhenNoApp = $('#quitWhenNoApp').checked;
+  cfg.behavior.hideDelaySec = parseInt($('#hideDelaySec').value || '10', 10);
+  cfg.behavior.confirmSound = $('#confirmSound').checked;
+  cfg.behavior.confirmTimeoutSec = parseInt($('#confirmTimeoutSec').value || '300', 10);
+  cfg.behavior.stallSec = parseInt($('#stallSec').value || '180', 10);
+  cfg.behavior.restRemindEnabled = $('#restRemindEnabled').checked;
+  cfg.behavior.restRemindMin = parseInt($('#restRemindMin').value || '45', 10);
+  cfg.behavior.restSnoozeMin = parseInt($('#restSnoozeMin').value || '5', 10);
+
+  cfg.system.startHidden = $('#startHidden').checked;
+
+  cfg.keys = cfg.keys || {};
+  document.querySelectorAll('.app-card').forEach((card, i) => {
+    const id = metaList[i].id;
+    cfg.keys[id] = {
+      approve: card.querySelector('[data-k=approve]').value,
+      deny: card.querySelector('[data-k=deny]').value,
+    };
+  });
+  return cfg;
+}
+
+async function save() {
+  collectPatch();
+  await window.petbuddy.patchSettings(cfg);
+  if ($('#autoStart').checked !== autostartNow) {
+    await window.petbuddy.setAutostart($('#autoStart').checked);
+    autostartNow = $('#autoStart').checked;
+  }
+  flash('已保存');
+}
+
+let msgTimer = null;
+function flash(t, ms = 2600) {
+  $('#msg').textContent = t;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => { $('#msg').textContent = ''; }, ms);
+}
+
+async function refreshStatus() {
+  await window.petbuddy.rescanApps().catch(() => {});
+  const snap = await window.petbuddy.getState();
+  metaList = snap.apps.map((a) => ({
+    id: a.id, name: a.name, emoji: a.emoji, icon: a.icon, color: a.color,
+    processNames: a.processNames || [], ports: a.ports || [],
+    deletable: a.deletable,
+  }));
+  const r = await window.petbuddy.integration('status');
+  if (r.ok) integStatus = r.status;
+  renderAppCards();
+}
+
+$('#rescan').onclick = async () => { await refreshStatus(); flash('已重新扫描'); };
+
+// ---------------- petdex pet import ----------------
+let petdexDeleteMode = false;
+async function renderPetdexList() {
+  const r = await window.petbuddy.petdexList().catch(() => null);
+  const wrap = $('#petdex-list');
+  wrap.innerHTML = '';
+  const delBtn = $('#petdex-delmode');
+  delBtn.classList.toggle('del-active', petdexDeleteMode);
+  $('#petdex-none').style.display = r && r.ok && r.pets.length ? 'none' : '';
+  if (!r || !r.ok || !r.pets.length) return;
+  for (const p of r.pets) {
+    const chip = document.createElement('button');
+    chip.className = 'act ghost pet-chip';
+    chip.style.fontSize = '11.5px';
+    chip.style.position = 'relative';
+    chip.title = 'slug: ' + p.slug;
+    chip.textContent = (cfg.appearance.sprite === 'petdex:' + p.slug ? '✓ ' : '') + (p.displayName || p.slug);
+    chip.classList.toggle('del', petdexDeleteMode);
+    // patch ONLY the sprite — never route through save()/collectPatch()
+    chip.onclick = async () => {
+      if (petdexDeleteMode) return;
+      await window.petbuddy.patchSettings({ appearance: { sprite: 'petdex:' + p.slug } });
+      cfg.appearance.sprite = 'petdex:' + p.slug;
+      syncSpriteSelect();
+      flash('已切换为 ' + (p.displayName || p.slug));
+      renderPetdexList();
+    };
+    wrap.appendChild(chip);
+    if (petdexDeleteMode) {
+      const del = document.createElement('button');
+      del.className = 'pet-del';
+      del.textContent = '✕';
+      del.title = '彻底删除(含已下载文件)';
+      del.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm(`彻底删除形象 ${p}(含下载文件)?`)) return;
+        const r2 = await window.petbuddy.petdexDelete(p);
+        if (r2.ok) {
+          if (cfg.appearance.sprite === 'petdex:' + p) {
+            cfg.appearance.sprite = 'eve';
+            await window.petbuddy.patchSettings({ appearance: { sprite: 'eve' } });
+            syncSpriteSelect();
+          }
+          flash('已删除 ' + p);
+        } else flash('删除失败: ' + (r2.error || ''));
+        renderPetdexList();
+      };
+      chip.appendChild(del);
+    }
+  }
+  loadPetdexSpriteOptions(); // keep the sprite presets in sync with installed pets
+}
+$('#petdex-import').onclick = async () => {
+  const name = $('#petdex-name').value.trim();
+  if (!name) { flash('请输入形象名'); return; }
+  if (/^\d+$/.test(name)) { flash('petdex 未公开编号映射,请输入名字/slug/中文名', 5000); return; }
+  const btn = $('#petdex-import');
+  btn.disabled = true; btn.textContent = '下载中…';
+  const r = await window.petbuddy.petdexInstall(name);
+  btn.disabled = false; btn.textContent = '导入';
+  if (!r.ok) { flash('❌ 导入失败: ' + (r.error || ''), 5000); return; }
+  await window.petbuddy.patchSettings({ appearance: { sprite: 'petdex:' + r.name } });
+  cfg.appearance.sprite = 'petdex:' + r.name;
+  syncSpriteSelect();
+  flash('已导入并使用 ' + (r.displayName || r.name) + (r.candidates && r.candidates.length > 1 ? `(共 ${r.candidates.length} 个同名候选,列表中可换)` : ''));
+  $('#petdex-name').value = '';
+  $('#petdex-clear').style.display = 'none';
+  $('#petdex-cands').style.display = 'none';
+  renderPetdexList();
+};
+$('#petdex-clear').onclick = () => {
+  $('#petdex-name').value = '';
+  $('#petdex-clear').style.display = 'none';
+  $('#petdex-cands').style.display = 'none';
+  $('#petdex-name').focus();
+};
+let searchTimer = null;
+$('#petdex-name').oninput = () => {
+  const v = $('#petdex-name').value.trim();
+  $('#petdex-clear').style.display = v ? 'block' : 'none';
+  clearTimeout(searchTimer);
+  if (!v) { $('#petdex-cands').style.display = 'none'; return; }
+  searchTimer = setTimeout(async () => {
+    const r = await window.petbuddy.petdexSearch(v).catch(() => null);
+    const box = $('#petdex-cands');
+    if (!r || !r.ok || !r.candidates.length) { box.style.display = 'none'; return; }
+    box.innerHTML = '<span class="hint" style="padding:0">候选:</span>';
+    for (const c of r.candidates) {
+      const chip = document.createElement('button');
+      chip.className = 'act ghost';
+      chip.style.fontSize = '11.5px';
+      chip.title = c.slug;
+      chip.textContent = c.displayName === c.slug ? c.slug : `${c.displayName}(${c.slug})`;
+      chip.onclick = async () => {
+        const ir = await window.petbuddy.petdexInstall(c.slug);
+        if (!ir.ok) { flash('❌ 导入失败: ' + (ir.error || ''), 5000); return; }
+        await window.petbuddy.patchSettings({ appearance: { sprite: 'petdex:' + ir.name } });
+        cfg.appearance.sprite = 'petdex:' + ir.name;
+        syncSpriteSelect();
+        flash('已导入并使用 ' + (ir.displayName || ir.name));
+        $('#petdex-name').value = '';
+        $('#petdex-clear').style.display = 'none';
+        box.style.display = 'none';
+        renderPetdexList();
+      };
+      box.appendChild(chip);
+    }
+    box.style.display = 'flex';
+  }, 350);
+};
+$('#petdex-delmode').onclick = () => {
+  petdexDeleteMode = !petdexDeleteMode;
+  flash(petdexDeleteMode ? '删除模式:点目标形象右侧的 ✕ 移除' : '已退出删除模式');
+  renderPetdexList();
+};
+
+// ---------------- add-app form ----------------
+$('#show-add').onclick = () => {
+  $('#add-form').classList.toggle('open');
+  $('#show-add').textContent = $('#add-form').classList.contains('open') ? '➖ 收起' : '➕ 添加应用';
+};
+$('#na-cancel').onclick = () => {
+  $('#add-form').classList.remove('open');
+  $('#show-add').textContent = '➕ 添加应用';
+};
+$('#na-style').onchange = () => {
+  $('#na-claude').style.display = $('#na-style').value === 'claude-file' ? '' : 'none';
+};
+$('#na-save').onclick = async () => {
+  const id = $('#na-id').value.trim().toLowerCase();
+  if (!id) { flash('请填写应用 ID'); return; }
+  const style = $('#na-style').value;
+  const entry = {
+    id,
+    name: $('#na-name').value.trim() || id,
+    color: $('#na-color').value,
+    icon: $('#na-icon').value.trim(),
+    processNames: $('#na-proc').value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+    ports: $('#na-port').value.split(/[,，]/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0),
+    keys: { approve: $('#na-approve').value.trim(), deny: $('#na-deny').value.trim() },
+    integration: [],
+  };
+  if (style === 'claude-file') {
+    const p = $('#na-cfgpath').value.trim();
+    if (!p) { flash('请填写 Claude 风格 hooks 的配置文件路径'); return; }
+    entry.integration = [{
+      style: 'claude-file', path: p,
+      eventCase: $('#na-case').value,
+      standalone: $('#na-standalone').checked,
+    }];
+  }
+  const r = await window.petbuddy.addApp(entry);
+  if (!r.ok) { flash('失败: ' + (r.error || '')); return; }
+  if (entry.integration.length) {
+    const ir = await window.petbuddy.integration('install', id);
+    flash(ir.ok ? `已添加并接入 ${entry.name}` : '已添加,接入失败: ' + (ir.error || ''));
+  } else {
+    flash(`已添加 ${entry.name}(镜像模式)`);
+  }
+  $('#na-cancel').onclick();
+  $('#na-id').value = $('#na-name').value = $('#na-icon').value = $('#na-proc').value = $('#na-port').value = '';
+  await refreshStatus();
+};
+
+$('#save').onclick = save;
+$('#open-data').onclick = () => window.petbuddy.openDataDir();
+$('#petdex-link').onclick = () => window.petbuddy.openPetdex();
+$('#win-min').onclick = () => window.petbuddy.winMin();
+$('#win-close').onclick = () => window.petbuddy.winClose();
+$('#pinned').onchange = async () => {
+  const r = await window.petbuddy.setPinned($('#pinned').checked);
+  flash(r.ok ? (r.pinned ? '常驻显示已开启' : '常驻显示已关闭') : '失败');
+};
+
+(async () => {
+  const r = await window.petbuddy.getSettings();
+  cfg = r.settings;
+  autostartNow = r.autostart;
+  $('#port').textContent = r.port;
+  $('#ver').textContent = 'v' + (r.appVersion || '');
+  await refreshStatus();
+  loadIntoUi();
+  await loadPetdexSpriteOptions();
+  renderPetdexList();
+  $('#save-bar').style.display = 'none';
+})();
+window.addEventListener('error', (e) => {
+  window.petbuddy.logLine('settings error: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
+});
+
+// ---- hover explanations -------------------------------------------------
+// the bubble is created lazily, measured, then clamped so it always stays
+// inside the settings window (flips above the label when there is no room below)
+(() => {
+  let cur = null;
+  const PAD = 8;
+  function hide() {
+    if (!cur) return;
+    const b = cur.querySelector('.tip-b');
+    if (b) b.style.display = 'none';
+    cur = null;
+  }
+  function show(el) {
+    if (cur === el) return;
+    hide();
+    let b = el.querySelector('.tip-b');
+    if (!b) {
+      b = document.createElement('span');
+      b.className = 'tip-b';
+      b.textContent = el.dataset.tip || '';
+      el.appendChild(b);
+    }
+    b.style.display = 'block';
+    b.style.left = '0px';
+    b.style.top = '0px';
+    const r = el.getBoundingClientRect();
+    const w = b.offsetWidth, h = b.offsetHeight;
+    // position:fixed -> viewport coordinates, so clamp straight to the window
+    const maxLeft = Math.max(PAD, window.innerWidth - w - PAD);
+    const left = Math.min(Math.max(r.left, PAD), maxLeft);
+    let top = r.bottom + 6;                                       // below the label…
+    if (top + h > window.innerHeight - PAD) top = r.top - h - 6;  // …or above when tight
+    if (top < PAD) top = PAD;
+    b.style.left = Math.round(left) + 'px';
+    b.style.top = Math.round(top) + 'px';
+    cur = el;
+  }
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target && e.target.closest ? e.target.closest('.tip') : null;
+    if (el) show(el); else hide();
+  });
+  document.addEventListener('mouseleave', hide);
+  document.addEventListener('scroll', hide, true);
+})();
+</script>
+</body>
+</html>
