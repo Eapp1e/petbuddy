@@ -1,4 +1,0 @@
-﻿alive after 8s: False
-boot grew: 0 B
-log grew: 0 B
-ping fail: 无法连接到远程服务器

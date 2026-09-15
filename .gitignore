@@ -12,3 +12,7 @@ Thumbs.db
 showcase.html
 showcase-settings.html
 showcase-backdrop.js
+# 本地测试/构建残留
+build-log.txt
+release-list.txt
+smoke*.txt

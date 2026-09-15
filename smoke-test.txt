@@ -1,3 +1,0 @@
-﻿alive after 7s: False
-exit code: 0
-ping fail: 无法连接到远程服务器
