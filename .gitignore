@@ -7,3 +7,6 @@ assets/.eve-*
 assets/.panda-*
 .DS_Store
 Thumbs.db
+# 开发用截图工具（不入库）
+showcase.html
+showcase-backdrop.js

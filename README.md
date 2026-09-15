@@ -2,11 +2,17 @@
 
 > A unified desktop pet for Windows that watches your AI coding agents — task progress at a glance, approve permission requests right on the pet.
 
-统一的 Windows 桌宠，同时监控 **ZCode / Codex / WorkBuddy / DSH** 四个 AI 编码应用：
+统一的 Windows 桌宠，监控你的 **AI 编码 Agent**：**Codex、Claude Code**、WorkBuddy、ZCode、DSH 开箱即用；**任何**有钩子机制或能发 HTTP 的 Agent，一分钟接入。
 实时显示"当前任务进行到哪一步"，应用需要确认时直接在桌宠上点 **允许 / 拒绝**，不用切回应用窗口。
 
 <p align="center">
-  <img src="docs/screenshot-rest.png" width="52%" alt="休息提醒与状态气泡" />
+  <img src="docs/01-running.png" width="30%" alt="运行中" />
+  <img src="docs/02-parallel.png" width="30%" alt="多任务并行" />
+  <img src="docs/03-confirm.png" width="30%" alt="确认直达" />
+  <br/>
+  <img src="docs/04-done.png" width="30%" alt="完成" />
+  <img src="docs/05-idle.png" width="30%" alt="空闲光环" />
+  <img src="docs/06-rest.png" width="30%" alt="休息提醒" />
 </p>
 
 ## 功能
@@ -36,7 +42,7 @@ npm start                       # 或双击 start-petbuddy.cmd（隐藏启动: n
 ### 接入你的 AI 应用（三步）
 
 ```bash
-npm run install-integrations    # 为 ZCode / Codex / WorkBuddy / DSH 自动安装桥接
+npm run install-integrations    # 为内置应用（Codex / WorkBuddy / ZCode / DSH）自动安装桥接
 ```
 
 1. 重启对应应用（或新开一个会话）
@@ -47,9 +53,10 @@ npm run install-integrations    # 为 ZCode / Codex / WorkBuddy / DSH 自动安�
 
 | 应用 | 机制 | 写入位置 |
 |---|---|---|
-| ZCode | config-file hooks（7 个事件 → `bridge/pet-bridge.mjs`） | `~/.zcode/cli/config.json` |
 | Codex | 原生 hooks（kebab 事件名）+ `notify` 包装（回合完成，原 notify 链式保留） | `~/.codex/hooks.json`、`~/.codex/config.toml` |
+| Claude Code | Claude 风格 `hooks` 键（添加应用 → 自动接入） | `~/.claude/settings.json` |
 | WorkBuddy | Claude 风格 `hooks` 键 | `~/.workbuddy/settings.json` |
+| ZCode | config-file hooks（7 个事件 → `bridge/pet-bridge.mjs`） | `~/.zcode/cli/config.json` |
 | DSH | 挂载 `@deepseek-ai/dsh-hooks-claude-code` 指向 `~/.petbuddy/dsh-hooks.json` | `<DSH_HOME>/profiles/web/cordis.patch.yml`（patchReload: live，无需重启） |
 
 - 所有钩子只**镜像状态**，永不阻塞/失败（桥接 2 秒超时、始终 exit 0）
