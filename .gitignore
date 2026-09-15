@@ -4,8 +4,8 @@ release/
 .hotreload
 _newscript.js
 # icon.js 的重生成标记（运行时产物）
-assets/.eve-*
-assets/.panda-*
+app/assets/.eve-*
+app/assets/.panda-*
 .DS_Store
 Thumbs.db
 # 开发用截图工具（不入库）

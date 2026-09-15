@@ -172,12 +172,16 @@ curl -X POST http://127.0.0.1:47650/api/event -d "{\"app\":\"zcode\",\"event\":\
 ## 项目结构
 
 ```
-main.js            Electron 主进程（窗口 / 托盘 / 看门狗 / IPC）
-pet.html           桌宠本体（精灵渲染 / 状态气泡 / 确认卡 / 圆环样式）
-settings.html      设置窗口（外观 / 行为 / 应用集成 / 系统）
-lib/               状态机、应用注册表、任务计时、按键注入、HTTP 服务
+app/               应用本体
+  main.js            Electron 主进程（窗口 / 托盘 / 看门狗 / IPC）
+  pet.html           桌宠（精灵渲染 / 状态气泡 / 确认卡 / 圆环样式）
+  settings.html      设置窗口（外观 / 行为 / 应用集成 / 系统）
+  preload.js         渲染进程桥接
+  lib/               状态机、应用注册表、任务计时、按键注入、HTTP 服务
+  assets/            图标与精灵素材
 bridge/            钩子桥接脚本（各应用钩子负载 → 统一事件）
 integrations/      接入安装器（zcode-config / claude-file / codex-notify / dsh-patch）
+docs/              截图与图标
 ```
 
 ## 数据与日志

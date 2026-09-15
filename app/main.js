@@ -15,7 +15,7 @@ const { pollApps } = require('./lib/watchdog');
 const { sendKeysToApp, focusTarget, keySequences } = require('./lib/confirm');
 const taskTimer = require('./lib/tasktimer');
 
-const VERSION = require('./package.json').version;
+const VERSION = require('../package.json').version;
 const ASSETS = path.join(__dirname, 'assets');
 const LOG_PATH = path.join(store.DATA_DIR, 'petbuddy.log');
 
