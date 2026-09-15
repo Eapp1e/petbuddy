@@ -1,4 +1,4 @@
-# PetBuddy 🐾
+<h1><img src="docs/icon.png" width="32" align="middle" alt="PetBuddy"> PetBuddy</h1>
 
 > A unified desktop pet for Windows that watches your AI coding agents — task progress at a glance, approve permission requests right on the pet.
 
