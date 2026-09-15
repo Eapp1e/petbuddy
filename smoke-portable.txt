@@ -1,0 +1,2 @@
+﻿launcher alive after 12s: False
+ping fail: 无法连接到远程服务器

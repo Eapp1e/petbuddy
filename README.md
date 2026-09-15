@@ -59,7 +59,7 @@ npm run install-integrations
 
 ### 桌宠外观
 
-- **Petdex 形象库**：从 [petdex.dev](https://petdex.dev/zh) 按名字导入形象，一键切换；内置 EVE / 团子猫 / Tiko 预设
+- **Petdex 形象库**：从 [petdex.dev](https://petdex.dev/zh) 按名字导入形象，一键切换；内置 EVE / Tiko 预设
 - **多种圆环样式**：经典光弧 / 双环反转 / 缺口旋转 / 彗尾追踪 / 脉冲外扩 / 追光三点 / 虚线段环 / 彩虹流转 / 辉光呼吸 / 双向扫描
 - **状态配色**：圆环颜色随任务状态（运行中=青 / 待确认=黄 / 完成=蓝 / 出错=红 / 休息提醒=绿 / 空闲=半透明灰蓝并自动放缓），速度可调
 

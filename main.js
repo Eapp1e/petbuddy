@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 
 const apps = require('./lib/apps');
+const fetchicon = require('./lib/fetchicon');
 const store = require('./lib/store');
 const { ensureIcons } = require('./lib/icon');
 const { createApiServer, listen } = require('./lib/server');
@@ -730,6 +731,11 @@ function setupIpc() {
   ipcMain.handle('pb:decide', (_e, { id, decision }) => handleConfirm(id, decision));
   ipcMain.handle('pb:open-settings', () => { createSettingsWindow(); });
   ipcMain.handle('pb:quit', () => { app.isQuitting = true; app.quit(); });
+  ipcMain.handle('pb:fetch-icon', async (_e, { id, site }) => {
+    try {
+      return await fetchicon.fetchAppIcon(id, site, store.DATA_DIR);
+    } catch (e) { return { ok: false, error: String(e.message || e) }; }
+  });
   ipcMain.handle('pb:open-petdex', () => shell.openExternal('https://petdex.dev/zh'));
   // 宠物右键菜单的「日志目录」与设置页的「打开 ~/.petbuddy」都走这个接口，
   // 之前漏注册导致点击静默失败

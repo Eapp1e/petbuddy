@@ -237,7 +237,8 @@
       <div class="frow"><label><span class="tip wide" data-tip="唯一标识，小写字母 / 数字 / 连字符，例如 mytool。会写进配置文件、也用于 API 地址；应用自己注册时用的也是这个名字。">应用 ID *</span></label><input type="text" id="na-id" placeholder="mytool (小写字母/数字/连字符)"></div>
       <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字，随便起，例如 MyTool。">显示名称</span></label><input type="text" id="na-name" placeholder="MyTool"></div>
       <div class="frow"><label><span class="tip wide" data-tip="桌宠下方那排小圆点的颜色，用来一眼区分是哪个应用在干活。">圆点颜色</span></label><input type="color" id="na-color" value="#9aa4b2">
-        <label style="width:auto"><span class="tip wide" data-tip="可选。填 PNG/SVG/ICO 的绝对路径，桌宠面板里就用这个图标；不填则显示彩色圆点。">图标路径</span></label><input type="text" id="na-icon" placeholder="可选, PNG/SVG 绝对路径"></div>
+        <label style="width:auto"><span class="tip wide" data-tip="可选。填 PNG/SVG/ICO 的绝对路径，桌宠面板里就用这个图标；不填则显示彩色圆点。也可以填好官网域名后点「🌐 抓取」自动下载。">图标路径</span></label><input type="text" id="na-icon" placeholder="可选, PNG/SVG 绝对路径"><button class="act ghost" id="na-fetchicon" title="按官网域名自动抓取该应用的官方图标并保存到本地">🌐 抓取</button></div>
+      <div class="frow"><label><span class="tip wide" data-tip="可选。填官网域名（如 cursor.com），点图标路径旁的「🌐 抓取」就能自动下载它的官方图标。">官网域名</span></label><input type="text" id="na-site" placeholder="可选, 如 cursor.com"></div>
       <div class="frow"><label><span class="tip wide" data-tip="可选。该应用在任务管理器里的进程名，多个用逗号分隔，如 MyApp.exe,myappd.exe。填了桌宠才能判断它是否正在运行（没填也不影响钩子上报状态）。">进程名</span></label><input type="text" id="na-proc" placeholder="可选, 逗号分隔, 如 MyApp.exe,myappd.exe"></div>
       <div class="frow"><label><span class="tip wide" data-tip="可选。该应用在本地监听的端口，如 8080。桌宠会探测端口来判断它是否还活着（有些应用没有进程名，只能靠端口）。">探测端口</span></label><input type="text" id="na-port" placeholder="可选, 逗号分隔, 如 8080"></div>
       <div class="frow"><label><span class="tip wide" data-tip="在桌宠上点「允许」时，向该应用窗口发送的按键序列。SendKeys 语法：{ENTER} 回车、{ESC} Esc、{TAB} Tab；用 ~~ 分隔多步，例如 1~~{ENTER}。留空则只记录决定、不按键。">允许按键</span></label><input type="text" id="na-approve" placeholder="{ENTER}">
@@ -446,7 +447,8 @@ function renderAppCards() {
       <div class="edit-panel" hidden>
         <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字。">显示名称</span></label><input data-e="name" value="${esc(meta.name)}"></div>
         <div class="frow"><label><span class="tip wide" data-tip="桌宠下方小圆点的颜色,用来区分应用。">圆点颜色</span></label><input type="color" data-e="color" value="${esc(meta.color || '#9aa4b2')}">
-          <label style="width:auto"><span class="tip wide" data-tip="可选。PNG/SVG/ICO 的绝对路径;留空显示彩色圆点。">图标路径</span></label><input data-e="icon" value="${esc(meta.icon || '')}" placeholder="可选, PNG/SVG 绝对路径"></div>
+          <label style="width:auto"><span class="tip wide" data-tip="可选。PNG/SVG/ICO 的绝对路径;留空显示彩色圆点。填好官网域名后可点「🌐 抓取」自动下载。">图标路径</span></label><input data-e="icon" value="${esc(meta.icon || '')}" placeholder="可选, PNG/SVG 绝对路径"><button class="act ghost" data-a="fetch" title="按下方官网域名自动抓取该应用的官方图标">🌐 抓取</button></div>
+      <div class="frow"><label><span class="tip wide" data-tip="可选。填官网域名（如 cursor.com），点「🌐 抓取」自动下载它的官方图标。">官网域名</span></label><input data-e="site" placeholder="如 cursor.com（抓取图标用）"></div>
         <div class="frow"><label><span class="tip wide" data-tip="该应用在任务管理器里的进程名,逗号分隔(如 MyApp.exe,myappd.exe)。用于判断它是否在运行。">进程名</span></label><input data-e="processNames" value="${esc((meta.processNames || []).join(', '))}" placeholder="可选, 逗号分隔"></div>
         <div class="frow"><label><span class="tip wide" data-tip="该应用监听的本地端口,逗号分隔(如 8080)。有些应用没有进程名,靠端口判断存活。">探测端口</span></label><input data-e="ports" value="${esc((meta.ports || []).join(', '))}" placeholder="可选, 逗号分隔"></div>
         <div class="keys"><label><span class="tip wide" data-tip="这个应用专属的按键:在桌宠上点「允许」时发给它的窗口。留空则用默认值。">允许按键</span></label><input data-k="approve" value="${esc(keys.approve ?? st.defaultApprove ?? '')}"><button class="act ghost" data-t="approve" title="立刻向该应用窗口发送这串按键,验证能否点到它的按钮">测试</button></div>
@@ -457,44 +459,9 @@ function renderAppCards() {
         </div>
       </div>
       <div class="hint">${esc(st.hint || '')}</div>`;
-    const editPanel = card.querySelector('.edit-panel');
-    const editBtn = card.querySelector('[data-a=edit]');
-    editBtn.onclick = () => {
-      editPanel.hidden = !editPanel.hidden;
-      editBtn.classList.toggle('on', !editPanel.hidden);
-    };
-    card.querySelector('[data-a=edit-cancel]').onclick = () => {
-      editPanel.hidden = true;
-      editBtn.classList.remove('on');
-    };
-    card.querySelector('[data-a=edit-save]').onclick = async () => {
-      const val = (k) => {
-        const el = card.querySelector(`[data-e="${k}"]`);
-        return el ? el.value : '';
-      };
-      const list = (k) => val(k).split(',').map((x) => x.trim()).filter(Boolean);
-      const patch = {
-        name: val('name').trim() || meta.name,
-        color: val('color'),
-        icon: val('icon').trim(),
-        processNames: list('processNames'),
-        ports: list('ports').map((n) => parseInt(n, 10)).filter((n) => n > 0),
-      };
-      const newKeys = {
-        approve: card.querySelector('[data-k=approve]').value,
-        deny: card.querySelector('[data-k=deny]').value,
-      };
-      const r = await window.petbuddy.updateApp(meta.id, patch);
-      cfg.keys = cfg.keys || {};
-      cfg.keys[meta.id] = newKeys;
-      await window.petbuddy.patchSettings({ keys: cfg.keys });
-      flash(r.ok ? `${patch.name} 已更新` : '保存失败: ' + (r.error || ''));
-      if (r.ok) {
-        editPanel.hidden = true;
-        editBtn.classList.remove('on');
-        await refreshStatus();
-      }
-    };
+
+    // editBtn onclick moved below (combined handler)
+    
     card.querySelector('[data-a=toggle]').onclick = async () => {
       cfg.integrations.enabled[meta.id] = !enabled;
       await save(); await refreshStatus();
@@ -515,6 +482,56 @@ function renderAppCards() {
       await refreshStatus();
       e.target.disabled = false;
     };
+    const editPanel = card.querySelector('.edit-panel');
+    const editBtn = card.querySelector('[data-a=edit]');
+    const siteInput = card.querySelector('[data-e="site"]');
+    card.querySelector('[data-a=fetch]').onclick = async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.textContent = '抓取中…';
+      const r = await window.petbuddy.fetchIcon(meta.id, (siteInput.value || '').trim() || meta.id + '.com')
+        .catch((x) => ({ ok: false, error: String(x) }));
+      btn.disabled = false; btn.textContent = '🌐 抓取';
+      if (r.ok) { card.querySelector('[data-e="icon"]').value = r.path; flash('已抓取官方图标 ✓（点「保存」生效）'); }
+      else flash('抓取失败: ' + (r.error || ''), 5000);
+    };
+    editBtn.onclick = () => {
+      editPanel.hidden = !editPanel.hidden;
+      editBtn.classList.toggle('on', !editPanel.hidden);
+    };
+    card.querySelector('[data-a=edit-cancel]').onclick = () => {
+      editPanel.hidden = true;
+      editBtn.classList.remove('on');
+    };
+    card.querySelector('[data-a=edit-save]').onclick = async (e) => {
+      const btn = e.currentTarget;
+      const val = (k) => { const el = card.querySelector(`[data-e="${k}"]`); return el ? el.value : ''; };
+      const list = (k) => val(k).split(',').map((x) => x.trim()).filter(Boolean);
+      const patch = {
+        name: val('name').trim() || meta.name,
+        color: val('color'),
+        icon: val('icon').trim(),
+        processNames: list('processNames'),
+        ports: list('ports').map((n) => parseInt(n, 10)).filter((n) => n > 0),
+      };
+      const newKeys = {
+        approve: card.querySelector('[data-k=approve]').value,
+        deny: card.querySelector('[data-k=deny]').value,
+      };
+      btn.disabled = true;
+      const r = await window.petbuddy.updateApp(meta.id, patch);
+      cfg.keys = cfg.keys || {};
+      cfg.keys[meta.id] = newKeys;
+      await window.petbuddy.patchSettings({ keys: cfg.keys });
+      btn.disabled = false;
+      flash(r.ok ? `${patch.name} 已更新` : '保存失败: ' + (r.error || ''));
+      if (r.ok) {
+        editPanel.hidden = true;
+        editBtn.classList.remove('on');
+        await refreshStatus();
+      }
+    };
+    const oldEdit = null;
+    oldEdit;
     card.querySelectorAll('[data-t]').forEach(btn => btn.onclick = async () => {
       const seq = card.querySelector(`[data-k="${btn.dataset.t}"]`).value;
       const r = await window.petbuddy.testKeys(meta.id, seq);
@@ -716,6 +733,17 @@ $('#petdex-delmode').onclick = () => {
 $('#show-add').onclick = () => {
   $('#add-form').classList.toggle('open');
   $('#show-add').textContent = $('#add-form').classList.contains('open') ? '➖ 收起' : '➕ 添加应用';
+};
+$('#na-fetchicon').onclick = async () => {
+  const id = $('#na-id').value.trim().toLowerCase();
+  if (!id) { flash('先填写应用 ID，再抓取图标'); return; }
+  const btn = $('#na-fetchicon');
+  btn.disabled = true; btn.textContent = '抓取中…';
+  const r = await window.petbuddy.fetchIcon(id, $('#na-site').value.trim() || id + '.com')
+    .catch((e) => ({ ok: false, error: String(e) }));
+  btn.disabled = false; btn.textContent = '🌐 抓取';
+  if (r.ok) { $('#na-icon').value = r.path; flash('已抓取官方图标 ✓'); }
+  else flash('抓取失败: ' + (r.error || ''), 5000);
 };
 $('#na-cancel').onclick = () => {
   $('#add-form').classList.remove('open');

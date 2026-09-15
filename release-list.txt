@@ -1,0 +1,9 @@
+﻿
+Name                          MB
+----                          --
+builder-debug.yml              0
+latest.yml                     0
+PetBuddy-0.1.0-portable.exe 79.5
+PetBuddy-Setup-0.1.0.exe    79.7
+
+

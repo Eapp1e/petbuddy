@@ -11,7 +11,8 @@
     "uninstall-integrations": "node integrations/install.mjs uninstall"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^24.13.3"
   },
   "license": "MIT",
   "repository": {
@@ -27,5 +28,53 @@
     "workbuddy",
     "status-monitor"
   ],
-  "author": "EAPPLE"
+  "author": "EAPPLE",
+  "build": {
+    "appId": "dev.eapple.petbuddy",
+    "productName": "PetBuddy",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "pet.html",
+      "settings.html",
+      "preload.js",
+      "lib/**/*",
+      "bridge/**/*",
+      "integrations/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "PetBuddy-Setup-${version}.${ext}",
+      "createDesktopShortcut": true,
+      "shortcutName": "PetBuddy"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "portable": {
+      "artifactName": "PetBuddy-${version}-portable.${ext}"
+    }
+  }
 }

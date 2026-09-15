@@ -1,4 +1,5 @@
 node_modules/
+release/
 *.log
 .hotreload
 _newscript.js

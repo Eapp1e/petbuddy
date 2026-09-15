@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('petbuddy', {
   addApp: (entry) => ipcRenderer.invoke('pb:add-app', entry),
   updateApp: (id, patch) => ipcRenderer.invoke('pb:update-app', { id, patch }),
   deleteApp: (id) => ipcRenderer.invoke('pb:delete-app', id),
+  fetchIcon: (id, site) => ipcRenderer.invoke('pb:fetch-icon', { id, site }),
   petdexInstall: (name) => ipcRenderer.invoke('pb:petdex-install', name),
   petdexSearch: (q) => ipcRenderer.invoke('pb:petdex-search', q),
   petdexList: () => ipcRenderer.invoke('pb:petdex-list'),
