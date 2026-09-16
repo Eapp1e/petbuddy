@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
     autoHideWhenNoApp: true, // hide pet while none of the four apps is running
     quitWhenNoApp: false,    // fully quit instead of hiding (checked with delay)
     confirmSound: true,
-    notifyEnabled: true,      // Windows 系统通知：完成/出错/待确认
+    notifyEnabled: false,     // Windows 系统通知（默认关：静默工作，想被提醒再去设置里打开）
     focusTargetOnApprove: true, // bring target app to front before sending keys
     hideDelaySec: 10,         // grace period after last app closes
     confirmTimeoutSec: 300,   // pending confirm cards expire
@@ -43,7 +43,8 @@ const DEFAULT_SETTINGS = {
     nodePath: '', // resolved at install time; empty = auto
   },
   system: {
-    appOrder: [],             // 应用在桌宠面板/圆点里的顺序（设置页 ↑↓ 调整）
+    appOrder: [],             // 应用在桌宠面板/圆点里的顺序（设置页拖动手柄调整）
+    hiddenApps: [],           // 被用户从列表里删掉的应用 id（内置应用也适用，可被「扫描应用」重新发现）
     autoStart: false,
     startHidden: false,
   },

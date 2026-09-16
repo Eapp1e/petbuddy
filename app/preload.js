@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('petbuddy', {
   winClose: () => ipcRenderer.invoke('pb:win-close'),
   logLine: (line) => ipcRenderer.invoke('pb:log', line),
   setPinned: (on) => ipcRenderer.invoke('pb:set-pinned', on),
+  hidePet: () => ipcRenderer.invoke('pb:hide-pet'),
+  hideApp: (id) => ipcRenderer.invoke('pb:hide-app', id),
 
   // settings window
   getSettings: () => ipcRenderer.invoke('pb:get-settings'),

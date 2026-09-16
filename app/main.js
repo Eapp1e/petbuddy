@@ -285,8 +285,14 @@ function aggregateState() {
  * 应用展示顺序：设置页里 ↑↓ 调整的顺序（settings.system.appOrder）优先，
  * 没列到的按注册顺序排在后面。桌宠面板、圆点、设置页共用同一个顺序。
  */
+function hiddenAppIds() {
+  const list = settings.system && Array.isArray(settings.system.hiddenApps) ? settings.system.hiddenApps : [];
+  return new Set(list);
+}
+
 function orderedStates() {
-  const list = Object.values(appStates);
+  const hidden = hiddenAppIds();
+  const list = Object.values(appStates).filter((s) => !hidden.has(s.id));
   const order = Array.isArray(settings.system.appOrder) ? settings.system.appOrder : [];
   if (!order.length) return list;
   const idx = new Map(order.map((id, i) => [id, i]));
@@ -457,6 +463,14 @@ function handleEvent(body) {
       setAppState(appId, { state: 'working', detail, errors: s.errors + 1 });
       Object.assign(sess, { state: 'working', detail, errors: sess.errors + 1 });
       break;
+    case 'interrupt': {
+      // 用户中止 / agent 被打断：立刻回到空闲，让光环和气泡马上有反应
+      const sess2 = sessions.get(key);
+      if (sess2) { sess2.state = 'idle'; sess2.detail = ''; }
+      setAppState(appId, { state: 'idle', title: title || '已中断', detail: '', action: '', target: '', todos: [] });
+      clearConfirmsForApp(appId);
+      break;
+    }
     case 'permission':
     case 'question': {
       sess.state = 'confirm'; sess.detail = detail;
@@ -860,6 +874,12 @@ function setupIpc() {
       return { ok: false, error: String((e && e.message) || e) };
     }
   });
+  ipcMain.handle('pb:hide-pet', () => {
+    // 和托盘左键一致：手动隐藏，直到有新活动或用户唤起
+    manualHidden = true;
+    if (petWindow && !petWindow.isDestroyed()) petWindow.hide();
+    return { ok: true };
+  });
   ipcMain.handle('pb:set-app-order', (_e, ids) => {
     if (!Array.isArray(ids)) return { ok: false, error: 'bad ids' };
     settings.system.appOrder = ids.map(String);
@@ -964,7 +984,9 @@ function setupIpc() {
   // 只有用户点「扫描应用」时才执行，不在每次刷新设置页时偷偷跑。
   ipcMain.handle('pb:scan-apps', () => {
     try {
-      const detected = detect.detect(apps.allApps().map((a) => a.id));
+      const hidden = hiddenAppIds();
+      const visibleIds = apps.allApps().map((a) => a.id).filter((id) => !hidden.has(id));
+      const detected = detect.detect(visibleIds);
       log('scan-apps', detected.length, 'candidates');
       return { ok: true, detected };
     } catch (e) {
@@ -972,7 +994,39 @@ function setupIpc() {
       return { ok: false, error: String((e && e.message) || e), detected: [] };
     }
   });
+  ipcMain.handle('pb:hide-app', (_e, id) => {
+    // 「删除」对内置应用 = 从桌宠列表里移除（不动它自己的配置），对用户自建应用 = 真删
+    const app = apps.getApp(id);
+    if (!app) return { ok: false, error: 'unknown app' };
+    try {
+      if (app.user || app.dynamic) {
+        apps.removeUserApp(id);
+      } else {
+        const sys = settings.system || (settings.system = {});
+        const list = Array.isArray(sys.hiddenApps) ? sys.hiddenApps : (sys.hiddenApps = []);
+        if (!list.includes(id)) list.push(id);
+        store.saveSettings(settings);
+      }
+      delete appStates[id];
+      updateVisibility();
+      broadcast();
+      return { ok: true, hidden: !(app.user || app.dynamic) };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
   ipcMain.handle('pb:add-app', (_e, entry) => {
+    // 如果之前被"删除"过，重新添加时把它从隐藏列表里拿回来
+    try {
+      const sys = settings.system || (settings.system = {});
+      if (Array.isArray(sys.hiddenApps) && sys.hiddenApps.includes(entry && entry.id)) {
+        sys.hiddenApps = sys.hiddenApps.filter((x) => x !== entry.id);
+        store.saveSettings(settings);
+      }
+    } catch {}
+    return addAppInner(entry);
+  });
+  function addAppInner(entry) {
     try {
       // 接入方式自动补齐（见 lib/detect.js#resolveIntegration）
       const e2 = Object.assign({}, entry);
@@ -985,7 +1039,7 @@ function setupIpc() {
     } catch (e) {
       return { ok: false, error: String(e.message || e) };
     }
-  });
+  }
   ipcMain.handle('pb:update-app', (_e, { id, patch }) => {
     try {
       const r = apps.updateApp(id, patch);

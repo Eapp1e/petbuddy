@@ -397,7 +397,7 @@
   <div id="bubble"><div class="b-title"></div><div class="b-detail"></div></div>
 
 
-  </div>
+
 
   <div id="panel"><h3><span>任务面板</span><div id="panel-close" title="关闭">✕</div></h3><div id="panel-rows"></div></div>
 
@@ -426,6 +426,7 @@
 
 <div id="menu">
   <div data-act="panel">任务面板</div>
+  <div data-act="hide">隐藏宠物</div>
   <div data-act="settings">设置</div>
   <div data-act="logs">日志目录</div>
   <div data-act="quit">退出</div>
@@ -972,6 +973,7 @@ menu.addEventListener('click', (e) => {
   if (!act) return;
   hideMenu();
   if (act === 'panel') togglePanel();
+  else if (act === 'hide') window.petbuddy.hidePet();
   else if (act === 'settings') window.petbuddy.openSettings();
   else if (act === 'logs') window.petbuddy.openDataDir();
   else if (act === 'quit') window.petbuddy.quit();

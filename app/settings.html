@@ -304,6 +304,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 let cfg = null, autostartNow = false, integStatus = {}, metaList = [], detectedApps = [];
+let addedFromScan = new Set();   // 本轮扫描里已添加过的
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 function appIco(app, size) {
@@ -407,17 +408,22 @@ function renderDetected() {
     row.querySelector('.d-note').textContent = note;
     const btn = document.createElement('button');
     btn.className = 'act';
-    btn.textContent = '添加';
+    const already = addedFromScan.has(d.id);
+    btn.textContent = already ? '已添加' : '添加';
+    btn.disabled = already;
+    btn.title = already ? '已加入桌宠，去下面的卡片点「安装接入」装钩子' : '加入桌宠';
     btn.onclick = async () => {
-      btn.disabled = true;
+      btn.disabled = true; btn.textContent = '添加中…';
       const r = await window.petbuddy.addApp({
         id: d.id, name: d.name, emoji: d.emoji, color: d.color,
         processNames: d.processNames || [], ports: d.ports || [],
         integration: d.integration,
       });
-      if (!r.ok) { flash('添加失败: ' + (r.error || '')); btn.disabled = false; return; }
-      flash(`${d.name} 已添加，点卡片上的「安装接入」即可装钩子`);
+      if (!r.ok) { flash('添加失败: ' + (r.error || '')); btn.disabled = false; btn.textContent = '添加'; return; }
+      addedFromScan.add(d.id);
+      flash(`${d.name} 已添加，点下面卡片上的「安装接入」即可装钩子`);
       await refreshStatus();
+      renderDetected();
     };
     row.appendChild(btn);
     wrap.appendChild(row);
@@ -437,8 +443,10 @@ async function addAllDetected() {
     }).catch(() => {});
   }
   btn.disabled = false; btn.textContent = '全部添加';
+  for (const d of list) addedFromScan.add(d.id);
   flash(`已添加 ${list.length} 个应用，去卡片上点「安装接入」装钩子`);
   await refreshStatus();
+  renderDetected();
 }
 $('#sprite').onchange = () => {
   const v = $('#sprite').value;
@@ -574,7 +582,7 @@ function renderAppCards() {
         <button class="act ghost" data-a="edit" title="修改这个应用:显示名称、圆点颜色、图标、进程名、探测端口、确认按键">修改</button>
         <button class="act ghost" data-a="toggle" title="${enabled ? '临时忽略这个应用的事件,不影响已装的钩子' : '恢复接收这个应用的事件'}">${enabled ? '停用' : '启用'}</button>
         ${st.manual ? '' : `<button class="act" data-a="${st.installed ? 'uninstall' : 'install'}" title="${st.installed ? '移除写入该应用配置里的钩子(原始文件有备份)' : '自动把桌宠的钩子写进这个应用的配置文件,装完重启一次该应用'}">${st.installed ? '卸载接入' : '安装接入'}</button>`}
-        ${meta.deletable ? '<button class="act ghost del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">删除</button>' : ''}
+        <button class="act ghost del" data-a="del" title="从桌宠的列表里移除：自建应用会被删掉，内置应用只是隐藏（可用「扫描应用」找回）。都不会动该应用自己的钩子 —— 要删钩子用「卸载接入」">删除</button>
       </div>
       <div class="edit-panel" hidden>
         <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字。">显示名称</span></label><input data-e="name" value="${esc(meta.name)}"></div>
@@ -606,9 +614,13 @@ function renderAppCards() {
     };
     const delBtn = card.querySelector('[data-a=del]');
     if (delBtn) delBtn.onclick = async () => {
-      if (!confirm(`删除应用 ${meta.name}? 其接入配置不会被卸载,可手动清理。`)) return;
-      const r = await window.petbuddy.deleteApp(meta.id);
-      flash(r.ok ? '已删除' : '失败: ' + (r.error || ''));
+      const isBuiltin = !meta.deletable;
+      const msg = isBuiltin
+        ? `把 ${meta.name} 从桌宠列表里移除？\n\n它自己的配置文件不会被改动（已装的钩子仍然存在），之后可以用「扫描应用」重新加回来。`
+        : `删除自建的 ${meta.name}？\n\n只从桌宠的列表里删除，不会动它自己的配置。`;
+      if (!confirm(msg)) return;
+      const r = await window.petbuddy.hideApp(meta.id);
+      flash(r.ok ? (isBuiltin ? `${meta.name} 已移出列表` : '已删除') : '失败: ' + (r.error || ''));
       await refreshStatus();
     };
     const installBtn = card.querySelector('.app-head .act:not(.ghost):not(.del)');
@@ -824,7 +836,7 @@ async function fetchDetectedIcons() {
   }
 }
 
-$('#detected-close').onclick = () => { detectedApps = []; renderDetected(); };
+$('#detected-close').onclick = () => { detectedApps = []; addedFromScan = new Set(); renderDetected(); };
 $('#add-all-detected').onclick = addAllDetected;
 
 // ---------------- petdex pet import ----------------

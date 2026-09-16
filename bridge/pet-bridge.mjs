@@ -236,8 +236,14 @@ function normalize(event, payload) {
         : short(payload.message || payload.question || '需要确认', 120);
       return { event: 'permission', question: q, detail: toolDetail(toolName, toolInput) };
     }
-    case 'stop': case 'subagentstop': case 'subagent-stop':
+    case 'stop': case 'subagentstop': case 'subagent-stop': {
+      // 中止/取消/报错 都不是"正常完成"，单独走 interrupt，桌宠会立刻回到空闲
+      const reason = String(payload.stop_reason || payload.reason || payload.error || '');
+      if (/interrupt|abort|cancel|reject|error|fail/i.test(reason)) {
+        return { event: 'interrupt', title: short(reason || '已中断', 80) };
+      }
       return { event: 'stop', title: short(payload.last_assistant_message || payload.stop_reason || '任务完成', 100) };
+    }
     case 'notification':
       return { event: 'message', detail: short(payload.message || '', 120) };
     case 'subagentstart': case 'subagent-start':
