@@ -129,6 +129,10 @@ function zcodeConfigStatus() {
 // Claude-format hooks: standalone {"hooks":{...}} file, or the same object
 // merged under the "hooks" key of an existing settings file.
 function claudeFileInstall(step, app) {
+  if (!step.path) {
+    // 兜底：没有路径就不写文件，返回可读原因（添加应用时不该因为缺路径失败）
+    return { skipped: true, error: `${app.id} 没有配置 hooks 文件路径（可在卡片 ⚙ 修改里填写，或改成镜像模式）` };
+  }
   writeBridgeShim();
   const file = expand(step.path);
   const events = step.events || (step.eventCase === 'kebab' ? KEBAB_EVENTS : PASCAL_EVENTS);

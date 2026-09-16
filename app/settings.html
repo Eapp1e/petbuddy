@@ -69,6 +69,15 @@
     border-radius: 9px; padding: 8px 10px; font-size: 11px; line-height: 1.65; font-weight: 400;
     letter-spacing: 0; box-shadow: 0 10px 26px rgba(0,0,0,.65); display: none; pointer-events: none; }
   .tip.wide > .tip-b { max-width: 330px; }
+  #detected-box { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #ffffff14; border-radius: 10px; background: #101219; }
+  #detected-box .d-title { font-size: 12px; color: #99a; margin-bottom: 4px; }
+  .d-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #ffffff0d; }
+  .d-row:first-of-type { border-top: 0; }
+  .d-row .d-ico { width: 20px; text-align: center; font-size: 13px; flex-shrink: 0; }
+  .d-row .d-name { font-size: 13px; color: #e6ebf5; width: 132px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-row .d-tag { font-size: 11px; padding: 2px 7px; border-radius: 7px; background: #7a86ff22; color: #aab4ff; flex-shrink: 0; }
+  .d-row .d-note { flex: 1; min-width: 0; font-size: 11px; color: #7d8697; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-row .act { padding: 3px 12px; font-size: 12px; flex-shrink: 0; }
   .app-card { background: #14161d; border: 1px solid #ffffff12; border-radius: 12px;
     padding: 12px 14px; margin-top: 10px; }
   .app-head { display: flex; align-items: center; gap: 8px; }
@@ -87,7 +96,8 @@
   .edit-panel .frow { display: flex; gap: 10px; margin-top: 8px; align-items: center; }
   .edit-panel .frow label { width: 92px; color: #99a; font-size: 12px; flex-shrink: 0; }
   .app-head .act.on { background: #ffffff24; color: #9db9ff; box-shadow: inset 0 0 0 1px #ffffff26; }
-  .app-head .del { background: #c0483f22; color: #ff9d94; padding: 6px 9px; }
+  .app-head .del:hover { border-color: #c0483f88; color: #ff9d94; }
+  .app-head .ord { padding: 4px 7px; line-height: 1; }
   .pd-card { background: #14161d; border: 1px solid #ffffff12; border-radius: 12px;
     padding: 12px 14px; margin-top: 12px; }
   .pd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -262,7 +272,7 @@
       </div>
     </div>
     <div id="detected-box" hidden>
-      <div class="sub">扫描到本机装过、但还没加进桌宠的应用 —— 点「添加」即可，接入方式已自动配好</div>
+      <div class="d-title">扫描到本机装过、还没加进桌宠的应用 —— 点「添加」即可，接入方式已自动配好</div>
       <div id="detected-list"></div>
       <div class="frow" style="justify-content:flex-end">
         <button class="act ghost" id="add-all-detected" title="把上面列出的应用全部添加（不会自动装钩子，添加后再点卡片上的安装接入）">全部添加</button>
@@ -383,10 +393,14 @@ function renderDetected() {
     const row = document.createElement('div');
     row.className = 'd-row';
     const step = (d.integration || [])[0] || {};
-    const how = step.style === 'none' ? '镜像模式（无需写配置）' : `自动写入 ${step.path || '配置文件'}`;
-    row.innerHTML = `<span class="d-name"></span><span class="d-how"></span>`;
-    row.querySelector('.d-name').textContent = `${d.emoji || ''} ${d.name}`.trim();
-    row.querySelector('.d-how').textContent = how + (d.note ? ` · ${d.note}` : '');
+    const tag = step.style === 'none' ? '镜像模式' : '自动写入 hooks';
+    // 说明只留一句，避免和"模式"字样重复
+    const note = String(d.note || '').replace(/^镜像模式[:：]?\s*/, '').replace(/^自动写入[^·]*·\s*/, '');
+    row.innerHTML = `<span class="d-ico"></span><span class="d-name"></span><span class="d-tag"></span><span class="d-note"></span>`;
+    row.querySelector('.d-ico').textContent = d.emoji || '•';
+    row.querySelector('.d-name').textContent = d.name;
+    row.querySelector('.d-tag').textContent = tag;
+    row.querySelector('.d-note').textContent = note;
     const btn = document.createElement('button');
     btn.className = 'act';
     btn.textContent = '添加';
@@ -505,7 +519,8 @@ function renderAppCards() {
         <button class="act ghost" data-a="edit" title="修改这个应用:显示名称、圆点颜色、图标、进程名、探测端口、确认按键">修改</button>
         <button class="act ghost" data-a="toggle" title="${enabled ? '临时忽略这个应用的事件,不影响已装的钩子' : '恢复接收这个应用的事件'}">${enabled ? '停用' : '启用'}</button>
         ${st.manual ? '' : `<button class="act" data-a="${st.installed ? 'uninstall' : 'install'}" title="${st.installed ? '移除写入该应用配置里的钩子(原始文件有备份)' : '自动把桌宠的钩子写进这个应用的配置文件,装完重启一次该应用'}">${st.installed ? '卸载接入' : '安装接入'}</button>`}
-        ${meta.deletable ? '<button class="act del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">🗑</button>' : ''}
+        <button class="act ghost ord" data-a="up" title="在桌宠面板里上移">↑</button><button class="act ghost ord" data-a="down" title="下移">↓</button>
+        ${meta.deletable ? '<button class="act ghost del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">删除</button>' : ''}
       </div>
       <div class="edit-panel" hidden>
         <div class="frow"><label><span class="tip" data-tip="桌宠任务面板里显示的名字。">显示名称</span></label><input data-e="name" value="${esc(meta.name)}"></div>
@@ -525,6 +540,18 @@ function renderAppCards() {
 
     // editBtn onclick moved below (combined handler)
     
+    const moveBy = async (delta) => {
+      const ids = metaList.map((m) => m.id);
+      const i = ids.indexOf(meta.id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      const tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+      const r = await window.petbuddy.setAppOrder(ids);
+      if (!r.ok) flash('排序失败: ' + (r.error || ''));
+      await refreshStatus();
+    };
+    card.querySelector('[data-a=up]').onclick = () => moveBy(-1);
+    card.querySelector('[data-a=down]').onclick = () => moveBy(1);
     card.querySelector('[data-a=toggle]').onclick = async () => {
       cfg.integrations.enabled[meta.id] = !enabled;
       await save(); await refreshStatus();
@@ -833,10 +860,9 @@ $('#na-save').onclick = async () => {
     integration: [],
   };
   if (style === 'claude-file') {
-    const p = $('#na-cfgpath').value.trim();
-    if (!p) { flash('请填写 Claude 风格 hooks 的配置文件路径'); return; }
+    // 路径留空没关系：主进程会用已知应用目录或 ~/<id>/settings.json 自动补全
     entry.integration = [{
-      style: 'claude-file', path: p,
+      style: 'claude-file', path: $('#na-cfgpath').value.trim(),
       eventCase: $('#na-case').value,
       standalone: $('#na-standalone').checked,
     }];

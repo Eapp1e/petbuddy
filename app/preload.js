@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('petbuddy', {
   // pet window
   checkUpdate: () => ipcRenderer.invoke('pb:check-update'),
   focusApp: (id) => ipcRenderer.invoke('pb:focus-app', id),
+  setAppOrder: (ids) => ipcRenderer.invoke('pb:set-app-order', ids),
   decide: (id, decision, text) => ipcRenderer.invoke('pb:decide', { id, decision, text }),
   setNeedHeight: (px) => ipcRenderer.invoke('pb:set-need-height', px),
   openSettings: () => ipcRenderer.invoke('pb:open-settings'),

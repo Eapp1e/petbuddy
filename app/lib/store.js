@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
     nodePath: '', // resolved at install time; empty = auto
   },
   system: {
+    appOrder: [],             // 应用在桌宠面板/圆点里的顺序（设置页 ↑↓ 调整）
     autoStart: false,
     startHidden: false,
   },

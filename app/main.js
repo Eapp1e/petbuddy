@@ -273,7 +273,7 @@ function aggregateState() {
   if (anyPendingConfirm()) return 'confirm';
   let best = 'idle';
   const rank = { idle: 0, done: 1, error: 2, working: 3, confirm: 4 };
-  for (const s of Object.values(appStates)) {
+  for (const s of orderedStates()) {
     if (settings.integrations.enabled[s.id] === false) continue; // 停用的应用不参与聚合
     if (s.state === 'confirm') return 'confirm';
     if (rank[s.state] > rank[best]) best = s.state;
@@ -281,12 +281,29 @@ function aggregateState() {
   return best;
 }
 
+/**
+ * 应用展示顺序：设置页里 ↑↓ 调整的顺序（settings.system.appOrder）优先，
+ * 没列到的按注册顺序排在后面。桌宠面板、圆点、设置页共用同一个顺序。
+ */
+function orderedStates() {
+  const list = Object.values(appStates);
+  const order = Array.isArray(settings.system.appOrder) ? settings.system.appOrder : [];
+  if (!order.length) return list;
+  const idx = new Map(order.map((id, i) => [id, i]));
+  const big = 1e6;
+  return list.slice().sort((a, b) => {
+    const ia = idx.has(a.id) ? idx.get(a.id) : big;
+    const ib = idx.has(b.id) ? idx.get(b.id) : big;
+    return ia - ib;
+  });
+}
+
 function snapshot() {
   return {
     version: VERSION,
     port: serverPort,
     aggregate: aggregateState(),
-    apps: Object.values(appStates).map((s) => {
+    apps: orderedStates().map((s) => {
       const meta = s.meta;
       return {
         id: s.id, name: meta.name, color: meta.color, emoji: meta.emoji,
@@ -843,6 +860,13 @@ function setupIpc() {
       return { ok: false, error: String((e && e.message) || e) };
     }
   });
+  ipcMain.handle('pb:set-app-order', (_e, ids) => {
+    if (!Array.isArray(ids)) return { ok: false, error: 'bad ids' };
+    settings.system.appOrder = ids.map(String);
+    store.saveSettings(settings);
+    broadcast();
+    return { ok: true, order: settings.system.appOrder };
+  });
   ipcMain.handle('pb:focus-app', async (_e, id) => {
     const proc = focusTarget(id);
     if (!proc) return { ok: false, error: '该应用没有配置进程名' };
@@ -1078,6 +1102,19 @@ function setupIpc() {
   });
   ipcMain.handle('pb:integration', async (_e, { action, appId }) => {
     try {
+      // 安装前先把接入方式补齐：镜像模式的应用点"安装接入"时，
+      // 自动套用已知目录的推荐配置（例如 claude → 写入 ~/.claude/settings.json）
+      if (action === 'install') {
+        const app = apps.getApp(appId);
+        if (app && !(app.integration || []).length) {
+          const steps = detect.resolveIntegration(app);
+          if (steps.length && steps[0].style !== 'none') {
+            apps.updateApp(appId, { integration: steps });
+            apps.reload();
+            log('integration auto-configured', appId, JSON.stringify(steps));
+          }
+        }
+      }
       const mod = await import(pathToFileURL(path.join(__dirname, '..', 'integrations', 'install.mjs')).href);
       if (action === 'status') return { ok: true, status: await mod.statusAll() };
       if (action === 'install') return { ok: true, result: await mod.installOne(appId) };
