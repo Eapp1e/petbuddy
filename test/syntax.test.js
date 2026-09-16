@@ -72,3 +72,29 @@ test('仓库内引用的顶层目录都存在（防止重组后路径悬空）',
     assert.ok(fs.existsSync(path.join(ROOT, f)), `缺少文件: ${f}`);
   }
 });
+
+test('HTML 内联脚本引用的元素 id 都必须存在', () => {
+  // 这条测试的由来：删掉「保存」按钮后，脚本里还留着 $('#save').onclick = ...
+  // 赋值 null 直接抛错，整个设置页脚本中断 —— 界面全废。现在由 CI 兜住这类问题。
+  const htmls = files.filter((f) => /\.html$/.test(f) && !f.includes('showcase'));
+  for (const fp of htmls) {
+    const src = fs.readFileSync(fp, 'utf8');
+    const ids = new Set([...src.matchAll(/\bid=["']([A-Za-z0-9_-]+)["']/g)].map((m) => m[1]));
+    const blocks = [...src.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n');
+    for (const m of blocks.matchAll(/\$\('#([A-Za-z0-9_-]+)'\)/g)) {
+      const id = m[1];
+      // 动态拼接（如 $('#na-' + x)）不在匹配范围内
+      if (!ids.has(id)) {
+        assert.fail(`${path.relative(ROOT, fp)} 引用了不存在的元素 #${id}`);
+      }
+    }
+  }
+});
+
+test('package.json 里声明的依赖目录存在（生产依赖必须真的装了）', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  for (const dep of Object.keys(pkg.dependencies || {})) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'node_modules', dep)),
+      `生产依赖没装：${dep}（打包会漏掉）`);
+  }
+});

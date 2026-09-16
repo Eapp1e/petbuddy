@@ -99,7 +99,7 @@
   .edit-panel .frow label { width: 92px; color: #99a; font-size: 12px; flex-shrink: 0; }
   .app-head .act.on { background: #ffffff24; color: #9db9ff; box-shadow: inset 0 0 0 1px #ffffff26; }
   .app-head .del:hover { border-color: #c0483f88; color: #ff9d94; }
-  .drag-handle { cursor: grab; color: #5c6472; padding: 0 5px; font-size: 13px; user-select: none; }
+  .drag-handle { cursor: grab; color: #5c6472; padding: 0 4px 0 0; font-size: 13px; user-select: none; flex-shrink: 0; }
   .drag-handle:active { cursor: grabbing; }
   .app-card.dragging { opacity: .45; }
   .app-card.drop-before { box-shadow: 0 -2px 0 0 #57d9b5; }
@@ -137,9 +137,9 @@
     border-radius: 6px; background: none; }
   #add-form .sub { color: #667; font-size: 11px; margin-top: 4px; }
   h4 { margin: 16px 0 4px; color: #7aa2ff; font-size: 12.5px; letter-spacing: .5px; }
-  #save-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
-    padding: 11px 18px; background: #1d1f27; border-top: 1px solid #ffffff14;
-    display: flex; gap: 10px; justify-content: flex-end; }
+  #save-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; background: transparent; border: 0; padding: 0;}
   #msg { color: #7fd7a0; font-size: 12px; align-self: center; margin-right: auto; }
 </style>
 </head>
@@ -567,13 +567,13 @@ function renderAppCards() {
           : '未接入:还没有装钩子，点右边的「安装接入」自动写入即可';
     card.innerHTML = `
       <div class="app-head">
+        <span class="drag-handle" draggable="true" title="拖动调整顺序（决定桌宠面板、圆点、气泡的先后）">⠿</span>
         <span>${appIco(meta)}</span><span class="name">${esc(meta.name)}</span>
         <span class="badge ${!enabled ? 'off' : st.installed ? 'ok' : 'no'}" title="${esc(badgeTip)}">
           ${!enabled ? '已停用' : st.installed ? '已接入' : st.manual ? '镜像' : '未接入'}</span>
         <button class="act ghost" data-a="edit" title="修改这个应用:显示名称、圆点颜色、图标、进程名、探测端口、确认按键">修改</button>
         <button class="act ghost" data-a="toggle" title="${enabled ? '临时忽略这个应用的事件,不影响已装的钩子' : '恢复接收这个应用的事件'}">${enabled ? '停用' : '启用'}</button>
         ${st.manual ? '' : `<button class="act" data-a="${st.installed ? 'uninstall' : 'install'}" title="${st.installed ? '移除写入该应用配置里的钩子(原始文件有备份)' : '自动把桌宠的钩子写进这个应用的配置文件,装完重启一次该应用'}">${st.installed ? '卸载接入' : '安装接入'}</button>`}
-        <span class="drag-handle" draggable="true" title="拖动调整在桌宠面板里的顺序">⠿</span>
         ${meta.deletable ? '<button class="act ghost del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">删除</button>' : ''}
       </div>
       <div class="edit-panel" hidden>
@@ -1001,7 +1001,6 @@ $('#na-save').onclick = async () => {
   await refreshStatus();
 };
 
-$('#save').onclick = save;
 $('#check-update').onclick = async (e) => {
   const btn = e.currentTarget;
   btn.disabled = true; btn.textContent = '检查中…';
@@ -1022,7 +1021,17 @@ $('#pinned').onchange = async () => {
 
 (async () => {
   const r = await window.petbuddy.getSettings();
+  if (!r || !r.settings) {            // 载荷异常时不要整页崩掉，留个可读提示
+    flash('设置读取失败：拿到的配置为空');
+    return;
+  }
   cfg = r.settings;
+  cfg.appearance = cfg.appearance || {};
+  cfg.behavior = cfg.behavior || {};
+  cfg.system = cfg.system || {};
+  cfg.integrations = cfg.integrations || { enabled: {} };
+  cfg.integrations.enabled = cfg.integrations.enabled || {};
+  cfg.keys = cfg.keys || {};
   autostartNow = r.autostart;
   $('#port').textContent = r.port;
   $('#ver').textContent = 'v' + (r.appVersion || '');
