@@ -16,6 +16,7 @@ const { sendKeysToApp, focusTarget, keySequences, answerSequence } = require('./
 const taskTimer = require('./lib/tasktimer');
 const tokenstats = require('./lib/tokenstats');
 const { shouldNotify, buildNotification } = require('./lib/notify');
+const detect = require('./lib/detect');
 
 const VERSION = require('../package.json').version;
 const ASSETS = path.join(__dirname, 'assets');
@@ -285,9 +286,7 @@ function snapshot() {
     version: VERSION,
     port: serverPort,
     aggregate: aggregateState(),
-    apps: Object.values(appStates)
-      .filter((s) => settings.integrations.enabled[s.id] !== false) // 停用 = 完全不显示
-      .map((s) => {
+    apps: Object.values(appStates).map((s) => {
       const meta = s.meta;
       return {
         id: s.id, name: meta.name, color: meta.color, emoji: meta.emoji,
@@ -302,6 +301,9 @@ function snapshot() {
         startedAt: s.startedAt || 0,
         since: s.since, lastTs: s.lastTs,
         tokens: s.tokens || null,
+        // 停用的应用仍然要出现在"设置"里（否则用户没法再启用它）；
+        // 桌宠自己的面板/圆点/气泡按这个标记过滤
+        enabled: settings.integrations.enabled[s.id] !== false,
       };
     }),
     petsDir: pathToFileURL(path.join(store.DATA_DIR, 'pets')).href.replace(/$/, '/'),
@@ -932,11 +934,17 @@ function setupIpc() {
     }
     updateVisibility();
     broadcast();
-    return { ok: true, count: apps.allApps().length };
+    // 顺便把"本机装过、但还没加进桌宠"的应用一并返回，让设置页能直接一键添加
+    let detected = [];
+    try { detected = detect.detect(apps.allApps().map((a) => a.id)); } catch (e) { log('detect failed', String(e.message || e)); }
+    return { ok: true, count: apps.allApps().length, detected };
   });
   ipcMain.handle('pb:add-app', (_e, entry) => {
     try {
-      const app = apps.addUserApp(entry);
+      // 接入方式自动补齐（见 lib/detect.js#resolveIntegration）
+      const e2 = Object.assign({}, entry);
+      e2.integration = detect.resolveIntegration(e2);
+      const app = apps.addUserApp(e2);
       ensureState(app);
       updateVisibility();
       broadcast();

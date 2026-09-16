@@ -548,7 +548,7 @@ function stopSheet() {
 const prevStates = {};
 let firstRender = true;
 function checkTransitions(snap) {
-  for (const app of snap.apps || []) {
+  for (const app of visApps(snap)) {
     const prev = prevStates[app.id];
     prevStates[app.id] = app.state;
     if (firstRender || prev === app.state) continue;
@@ -633,17 +633,17 @@ function render(snap) {
 
   // bubble: cycle through running apps; completions only shown when nothing
   // is running (the toast already announced them)
-  const working = (snap.apps || [])
+  const working = visApps(snap)
     .filter(x => x.running && x.state === 'working')
     .sort((x, y) => y.lastTs - x.lastTs);
-  const finished = (snap.apps || [])
+  const finished = visApps(snap)
     .filter(x => x.running && (x.state === 'done' || x.state === 'error'))
     .sort((x, y) => y.lastTs - x.lastTs);
   const actives = working.length ? working : finished;
   const ids = actives.map(x => x.id).join();
   if (ids !== bubbleCycleIds.join()) { bubbleCycleIds = actives.map(x => x.id); bubbleIdx = 0; }
   bubbleIdx = bubbleIdx % Math.max(actives.length, 1);
-  const busy = (snap.apps || []).find(x => x.state === 'confirm') || actives[bubbleIdx];
+  const busy = visApps(snap).find(x => x.state === 'confirm') || actives[bubbleIdx];
   const taskConfirmPending = (snap.confirms || []).some(c => !c.rest);
   const bubbleWillShow = (a.bubbleEnabled !== false) && !!busy && !panelOpen && !taskConfirmPending;
 
@@ -775,11 +775,11 @@ function layoutStack(snap) {
   if (Math.abs(need - reportedNeed) > 6) { reportedNeed = need; try { window.petbuddy.setNeedHeight(need); } catch {} }
 }
 function renderDots(snap) {
-  const dotIds = (snap.apps || []).map(x => x.id).join();
+  const dotIds = visApps(snap).map(x => x.id).join();
   if (dots.dataset.ids !== dotIds) {
     dots.dataset.ids = dotIds;
     dots.innerHTML = '';
-    for (const app of snap.apps || []) {
+    for (const app of visApps(snap)) {
       const d = document.createElement('span');
       d.style.color = app.color;
       d.dataset.id = app.id;
@@ -832,10 +832,15 @@ function fmtTok(n) {
   return String(n);
 }
 
+// 停用的应用不进桌宠的任何视图（设置页仍然列出它们，否则没法再启用）
+function visApps(snap) {
+  return (snap.apps || []).filter((a) => a.enabled !== false);
+}
+
 function renderPanel(snap) {
   const rows = $('#panel-rows');
   rows.innerHTML = '';
-  for (const app of snap.apps || []) {
+  for (const app of visApps(snap)) {
     const row = document.createElement('div');
     row.className = 'p-row' + (app.running ? '' : ' off');
     if (!app.running) {

@@ -245,7 +245,7 @@
       <div class="frow"><label><span class="tip wide" data-tip="在桌宠上点「允许」时，向该应用窗口发送的按键序列。SendKeys 语法：{ENTER} 回车、{ESC} Esc、{TAB} Tab；用 ~~ 分隔多步，例如 1~~{ENTER}。留空则只记录决定、不按键。">允许按键</span></label><input type="text" id="na-approve" placeholder="{ENTER}">
         <label style="width:auto"><span class="tip wide" data-tip="在桌宠上点「拒绝」时发送的按键，通常填 {ESC}（多数 CLI 用它取消）。">拒绝按键</span></label><input type="text" id="na-deny" placeholder="{ESC}"></div>
       <div class="frow"><label><span class="tip wide" data-tip="推荐「自动接入」：桌宠直接往该应用的配置文件里写钩子，开始/工具调用/待确认/结束都会上报，事件最全、状态最准（WorkBuddy/ZCode/Codex/DSH 都是这种方式）。「镜像模式」适合没有钩子机制的应用：需要它自己 POST /api/event，桌宠只能被动接收。">接入方式</span></label>
-        <select id="na-style">
+        <select id="na-style" title="留空/不选也行：已知应用会自动套用推荐配置，其它应用走镜像模式（无需填路径）">
           <option value="claude-file">自动接入（推荐）: 写入 Claude 风格 hooks 文件</option>
           <option value="none">手动接入（镜像模式）: 应用自己 POST /api/event</option>
         </select></div>
@@ -259,6 +259,13 @@
       <div class="frow" style="justify-content:flex-end">
         <button class="act ghost" id="na-cancel" title="放弃这个应用，不写入任何配置">取消</button>
         <button class="act" id="na-save" title="写入 apps.config.json；保存后可在卡片上点「安装接入」装钩子">保存应用</button>
+      </div>
+    </div>
+    <div id="detected-box" hidden>
+      <div class="sub">扫描到本机装过、但还没加进桌宠的应用 —— 点「添加」即可，接入方式已自动配好</div>
+      <div id="detected-list"></div>
+      <div class="frow" style="justify-content:flex-end">
+        <button class="act ghost" id="add-all-detected" title="把上面列出的应用全部添加（不会自动装钩子，添加后再点卡片上的安装接入）">全部添加</button>
       </div>
     </div>
     <div id="app-cards"></div>
@@ -281,7 +288,7 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
-let cfg = null, autostartNow = false, integStatus = {}, metaList = [];
+let cfg = null, autostartNow = false, integStatus = {}, metaList = [], detectedApps = [];
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 function appIco(app, size) {
@@ -362,6 +369,58 @@ function loadIntoUi() {
   $('#startHidden').checked = cfg.system.startHidden;
 
   renderAppCards();
+  renderDetected();
+}
+
+/** 扫描到的可接入应用：一键添加（接入配置由主进程按目录自动补齐） */
+function renderDetected() {
+  const box = $('#detected-box'), wrap = $('#detected-list');
+  if (!box || !wrap) return;
+  wrap.innerHTML = '';
+  box.hidden = !detectedApps.length;
+  if (!detectedApps.length) return;
+  for (const d of detectedApps) {
+    const row = document.createElement('div');
+    row.className = 'd-row';
+    const step = (d.integration || [])[0] || {};
+    const how = step.style === 'none' ? '镜像模式（无需写配置）' : `自动写入 ${step.path || '配置文件'}`;
+    row.innerHTML = `<span class="d-name"></span><span class="d-how"></span>`;
+    row.querySelector('.d-name').textContent = `${d.emoji || ''} ${d.name}`.trim();
+    row.querySelector('.d-how').textContent = how + (d.note ? ` · ${d.note}` : '');
+    const btn = document.createElement('button');
+    btn.className = 'act';
+    btn.textContent = '添加';
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const r = await window.petbuddy.addApp({
+        id: d.id, name: d.name, emoji: d.emoji, color: d.color,
+        processNames: d.processNames || [], ports: d.ports || [],
+        integration: d.integration,
+      });
+      if (!r.ok) { flash('添加失败: ' + (r.error || '')); btn.disabled = false; return; }
+      flash(`${d.name} 已添加，点卡片上的「安装接入」即可装钩子`);
+      await refreshStatus();
+    };
+    row.appendChild(btn);
+    wrap.appendChild(row);
+  }
+}
+
+async function addAllDetected() {
+  const list = detectedApps.slice();
+  if (!list.length) return;
+  const btn = $('#add-all-detected');
+  btn.disabled = true; btn.textContent = '添加中…';
+  for (const d of list) {
+    await window.petbuddy.addApp({
+      id: d.id, name: d.name, emoji: d.emoji, color: d.color,
+      processNames: d.processNames || [], ports: d.ports || [],
+      integration: d.integration,
+    }).catch(() => {});
+  }
+  btn.disabled = false; btn.textContent = '全部添加';
+  flash(`已添加 ${list.length} 个应用，去卡片上点「安装接入」装钩子`);
+  await refreshStatus();
 }
 $('#sprite').onchange = () => {
   const v = $('#sprite').value;
@@ -604,7 +663,8 @@ function flash(t, ms = 2600) {
 }
 
 async function refreshStatus() {
-  await window.petbuddy.rescanApps().catch(() => {});
+  const scan = await window.petbuddy.rescanApps().catch(() => null);
+  if (scan && Array.isArray(scan.detected)) detectedApps = scan.detected;
   const snap = await window.petbuddy.getState();
   metaList = snap.apps.map((a) => ({
     id: a.id, name: a.name, emoji: a.emoji, icon: a.icon, color: a.color,
@@ -616,7 +676,8 @@ async function refreshStatus() {
   renderAppCards();
 }
 
-$('#rescan').onclick = async () => { await refreshStatus(); flash('已重新扫描'); };
+$('#rescan').onclick = async () => { await refreshStatus(); flash(`已重新扫描（可接入 ${detectedApps.length} 个未添加）`); };
+$('#add-all-detected').onclick = addAllDetected;
 
 // ---------------- petdex pet import ----------------
 let petdexDeleteMode = false;
