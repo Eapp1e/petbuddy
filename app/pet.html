@@ -209,13 +209,19 @@
     --ring: #4fd8ff;
   }
   #pet.working ~ #spinner, #spinner.on { opacity: .9; }
-  /* 鼠标移上来时的小反应：抬头 + 耳朵抖一下 */
-  #pet.hover-react { animation: hover-react .62s ease-out; }
+  /* 鼠标移上来时的小反应：小跳 + 挤压回弹
+     注意：三种形象模式画的元素不同（内置形象画在 #pet，petdex 画在 #sheet-wrap，
+     自定义图片是 #custom-sprite），所以要对全部可能可见的元素生效 —— 之前只写给
+     #pet，而 petdex 模式下 #pet 是 display:none，等于没效果。 */
+  #pet-wrap.hover-react #pet,
+  #pet-wrap.hover-react #sheet-wrap,
+  #pet-wrap.hover-react #custom-sprite { animation: hover-react .62s ease-out; }
   @keyframes hover-react {
     0%   { transform: translateY(0) scale(1, 1); }
-    22%  { transform: translateY(-7px) scale(1.03, .95); }
-    46%  { transform: translateY(0) scale(.98, 1.04); }
-    72%  { transform: translateY(-2px) scale(1.01, .99); }
+    18%  { transform: translateY(-10px) scale(1.05, .93); }
+    40%  { transform: translateY(0) scale(.96, 1.06); }
+    62%  { transform: translateY(-5px) scale(1.02, .98); }
+    82%  { transform: translateY(0) scale(.99, 1.01); }
     100% { transform: translateY(0) scale(1, 1); }
   }
   #spinner::before, #spinner::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
@@ -992,11 +998,11 @@ menu.addEventListener('click', (e) => {
 // 鼠标移上来时给个回应（参考 codex 桌宠：靠近会动一下）
 wrap.addEventListener('mouseenter', () => {
   if (drag) return;
-  pet.classList.add('hover-react');
+  wrap.classList.add('hover-react');
   clearTimeout(wrap._hoverT);
-  wrap._hoverT = setTimeout(() => pet.classList.remove('hover-react'), 700);
+  wrap._hoverT = setTimeout(() => wrap.classList.remove('hover-react'), 700);
 });
-wrap.addEventListener('mouseleave', () => pet.classList.remove('hover-react'));
+wrap.addEventListener('mouseleave', () => wrap.classList.remove('hover-react'));
 
 window.addEventListener('mousedown', (e) => {
   if (!menu.contains(e.target)) hideMenu();

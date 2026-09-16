@@ -39,6 +39,9 @@ function normalizeEntry(raw) {
     integration: Array.isArray(raw.integration) ? raw.integration : [],
     dynamic: !!raw.dynamic,
     user: !!raw.user,
+    // 自动探测出来的用量数据源（接入应用时后台填上）
+    tokenRoots: Array.isArray(raw.tokenRoots) ? raw.tokenRoots : [],
+    tokenDiscovered: !!raw.tokenDiscovered,
   };
 }
 

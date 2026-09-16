@@ -76,6 +76,51 @@ process.on('unhandledRejection', (e) => log('unhandledRejection', (e && e.stack)
 // 桌宠不显示 / 设置窗口全黑）。桌宠面积很小，走软件渲染更稳，避免这类白屏。
 app.disableHardwareAcceleration();
 
+// ------------------------------------------------------- token discovery ---
+// 接入应用时自动找出它的用量数据源（不要求用户/开发者手写路径）。
+// 结果存进 settings.system.tokenSources，重启后依然有效。
+function tokenRootsFor(id) {
+  const sys = settings.system || {};
+  const saved = (sys.tokenSources && sys.tokenSources[id]) || [];
+  const meta = (appStates[id] && appStates[id].meta) || {};
+  const fromMeta = (meta.tokenRoots || []).map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean);
+  return saved.map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean).concat(fromMeta);
+}
+
+function saveTokenRoots(id, roots) {
+  const sys = settings.system || (settings.system = {});
+  sys.tokenSources = sys.tokenSources || {};
+  sys.tokenSources[id] = roots.slice(0, 4);
+  store.saveSettings(settings);
+}
+
+/** 后台探测某应用的用量来源（首次接入 / 手动刷新时调用） */
+function scheduleTokenDiscovery(app, force) {
+  if (!app || !app.id) return;
+  const id = app.id;
+  if (!force && tokenRootsFor(id).length) return;          // 已经知道来源就不再折腾
+  setImmediate(() => {
+    try {
+      const hints = {
+        markers: [],
+        integrationPaths: (app.integration || []).map((st) => st && st.path).filter(Boolean),
+        extraRoots: tokenRootsFor(id),
+      };
+      const hits = tokenstats.discoverSource(id, hints);
+      const roots = hits.map((h) => ({ root: h.root, file: h.file }));
+      if (roots.length) {
+        saveTokenRoots(id, roots);
+        log('token source discovered', id, roots.map((r) => r.root).join(' | '));
+      } else {
+        log('token source not found', id, '(该应用可能不落盘用量数据)');
+      }
+      broadcast();
+    } catch (e) {
+      log('token discovery failed', id, String((e && e.message) || e));
+    }
+  });
+}
+
 // ------------------------------------------------------------ notify -------
 /** 系统通知：桌宠被窗口挡住 / 隐藏时，任务完成与出错也能第一时间知道 */
 function notifyState(s, prev) {
@@ -749,7 +794,7 @@ async function watchdogTick() {
     // token 用量：模块内部按应用缓存 60s，日常调用是零成本的
     for (const s of Object.values(appStates)) {
       if (settings.integrations.enabled[s.id] === false) continue;
-      try { s.tokens = tokenstats.scanApp(s.id); } catch {}
+      try { s.tokens = tokenstats.scanApp(s.id, tokenRootsFor(s.id)); } catch {}
     }
     const metas = Object.values(appStates)
       .filter((s) => settings.integrations.enabled[s.id] !== false)
@@ -1035,6 +1080,7 @@ function setupIpc() {
       ensureState(app);
       updateVisibility();
       broadcast();
+      scheduleTokenDiscovery(app, false);   // 接入即自动探测用量数据源
       return { ok: true, id: app.id };
     } catch (e) {
       return { ok: false, error: String(e.message || e) };
@@ -1257,6 +1303,13 @@ async function boot() {
 
   setupUpdater();
   setupShortcuts();
+  // 启动后给"还没有用量来源"的应用各探测一次（错峰，避免卡启动）
+  setTimeout(() => {
+    for (const s of Object.values(appStates)) {
+      if (settings.integrations.enabled[s.id] === false) continue;
+      if (!tokenRootsFor(s.id).length) scheduleTokenDiscovery(s.meta, false);
+    }
+  }, 6000);
 
   setInterval(watchdogTick, 2500);
   watchdogTick();

@@ -48,6 +48,169 @@ const appCache = new Map();    // appId -> { ts, totals }
 const APP_TTL = 60000;         // 同一应用 60s 内不重复扫描（首次全扫约百毫秒）
 const MAX_READ = 8 * 1024 * 1024;
 
+
+// --------------------------------------------------------------- 自动探测 --
+// 目的：接入任意应用时自动找到它的用量数据源，而不是每个应用手写一套路径。
+// 做法：从"可能相关的目录"里找最近改动的 json/jsonl，抽样嗅探有没有用量字段。
+
+/** 通用用量提取：在任意嵌套结构里找第一个"像 token 用量"的对象 */
+function extractUsage(node, depth = 0, seen = new Set()) {
+  if (!node || typeof node !== 'object' || depth > 6 || seen.has(node)) return null;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    for (const v of node) { const r = extractUsage(v, depth + 1, seen); if (r) return r; }
+    return null;
+  }
+  const pick = (...names) => {
+    for (const n of names) {
+      const v = node[n];
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+    }
+    return 0;
+  };
+  const inp = pick('inputTokens', 'input_tokens', 'promptTokens', 'prompt_tokens', 'uncachedInputTokens');
+  const out = pick('outputTokens', 'output_tokens', 'completionTokens', 'completion_tokens', 'decodeTokens');
+  const cac = pick('cachedInputTokens', 'cached_input_tokens', 'cacheReadTokens', 'cache_read_input_tokens', 'cacheReadInputTokens');
+  if (inp || out || cac) return { in: inp, out, cache: cac, ctx: inp + cac };
+  for (const v of Object.values(node)) {
+    const r = extractUsage(v, depth + 1, seen);
+    if (r) return r;
+  }
+  return null;
+}
+
+/** 读文件的一段（offset 起 len 字节） */
+function readChunk(fp, offset, len) {
+  try {
+    const fd = fs.openSync(fp, 'r');
+    const buf = Buffer.allocUnsafe(Math.max(0, len));
+    const n = fs.readSync(fd, buf, 0, Math.max(0, len), Math.max(0, offset));
+    fs.closeSync(fd);
+    return buf.slice(0, n).toString('utf8');
+  } catch { return ''; }
+}
+
+/** 在一段文本里找用量：先按行（JSONL），再整体当 JSON 试 */
+function sniffText(text, maxLines = 80) {
+  if (!text) return null;
+  const lines = text.split(String.fromCharCode(10)).filter((l) => l.trim().startsWith('{'));
+  for (let i = lines.length - 1; i >= 0 && i > lines.length - maxLines; i--) {
+    try {
+      const u = extractUsage(JSON.parse(lines[i]));
+      if (u) return u;
+    } catch {}
+  }
+  try {
+    const u = extractUsage(JSON.parse(text));
+    if (u) return u;
+  } catch {}
+  return null;
+}
+
+/**
+ * 抽样嗅探一个文件：尾部 512KB 找不到就再看头部 256KB。
+ * （只读尾部会漏：有些流水文件末尾全是报错条目，真正的用量的在中间/前部。）
+ */
+function sniffFile(fp) {
+  let size = 0;
+  try {
+    const st = fs.statSync(fp);
+    size = st.size;
+    if (size < 40) return null;
+  } catch { return null; }
+
+  const tailLen = Math.min(size, 512 * 1024);
+  let hit = sniffText(readChunk(fp, size - tailLen, tailLen));
+  if (hit) return hit;
+
+  if (size > tailLen) {
+    const headLen = Math.min(size, 256 * 1024);
+    hit = sniffText(readChunk(fp, 0, headLen));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function expandPath(p) {
+  if (!p) return p;
+  return String(p)
+    .replace(/^~(?=$|[\\/])/, os.homedir())
+    .replace(/%APPDATA%/gi, process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'))
+    .replace(/%LOCALAPPDATA%/gi, process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'));
+}
+
+/** 猜这个应用可能把会话/日志放在哪 */
+function candidateRoots(appId, hints = {}) {
+  const id = String(appId || '').toLowerCase();
+  const home = os.homedir();
+  const out = [];
+  const add = (p) => { if (p && !out.includes(p)) out.push(p); };
+  add(path.join(home, '.' + id));
+  add(path.join(home, '.' + id, 'projects'));
+  add(path.join(home, '.' + id, 'sessions'));
+  add(path.join(home, '.' + id, 'logs'));
+  add(path.join(home, '.' + id, 'cli', 'rollout'));
+  const cap = id.charAt(0).toUpperCase() + id.slice(1);
+  add(path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), cap));
+  for (const m of hints.markers || []) {
+    const e = expandPath(m);
+    out.push(fs.existsSync(e) && fs.statSync(e).isDirectory() ? e : path.dirname(e));
+  }
+  for (const ip of hints.integrationPaths || []) {
+    if (ip) add(expandPath(path.dirname(String(ip))));
+  }
+  for (const r of hints.extraRoots || []) add(expandPath(r));
+  return out.filter((p) => {
+    try { return fs.existsSync(p) && fs.statSync(p).isDirectory(); } catch { return false; }
+  });
+}
+
+function collectRecent(root, sinceMs, out, depth = 0, budget = { n: 400 }) {
+  if (budget.n <= 0 || depth > 4) return;
+  let items = [];
+  try { items = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+  for (const it of items) {
+    if (budget.n <= 0) return;
+    const fp = path.join(root, it.name);
+    if (it.isDirectory()) {
+      if (!/^(node_modules|\.git|dist|build|out|cache|Cache)$/i.test(it.name)) collectRecent(fp, sinceMs, out, depth + 1, budget);
+    } else if (/\.(json|jsonl)$/i.test(it.name)) {
+      budget.n -= 1;
+      try {
+        const st = fs.statSync(fp);
+        if (st.mtimeMs >= sinceMs && st.size >= 40) out.push({ fp, mtime: st.mtimeMs, size: st.size });
+      } catch {}
+    }
+  }
+}
+
+/**
+ * 自动探测某应用的用量数据源。
+ * @returns {{root:string, file:string, sample:object}[]}
+ */
+function discoverSource(appId, hints = {}) {
+  const since = Date.now() - 3 * 86400000;   // 近 3 天改过的文件
+  const roots = candidateRoots(appId, hints);
+  const files = [];
+  for (const root of roots) collectRecent(root, since, files);
+  files.sort((a, b) => b.mtime - a.mtime);
+  const hits = [];
+  const seenRoot = new Set();
+  const t0 = Date.now();
+  for (const f of files) {
+    if (Date.now() - t0 > 2500) break;        // 时间预算：别让接入卡住
+    if (hits.length >= 3) break;
+    const root = roots.find((r) => f.fp.startsWith(r)) || path.dirname(f.fp);
+    if (seenRoot.has(root)) continue;
+    const sample = sniffFile(f.fp);
+    if (sample) {
+      seenRoot.add(root);
+      hits.push({ root, file: f.fp, sample });
+    }
+  }
+  return hits;
+}
+
 function zero() { return { out: 0, ctx: 0, cache: 0 }; }
 function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; }
 function dayStartMs() { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
@@ -105,7 +268,15 @@ function accumulateLine(appId, line, totals, dayMs, state) {
 
   // Claude 系：assistant 消息的 usage，或顶层 usage（WorkBuddy 的 function_call 行）
   const usage = (j.message && j.message.usage) || j.usage;
-  if (!usage || typeof usage !== 'object') return;
+  if (!usage || typeof usage !== 'object') {
+    // 通用回退：结构不认识也能识别出用量（新接入的应用不用手写解析器）
+    const g = extractUsage(j);
+    if (g && (g.in || g.out || g.cache)) {
+      totals.out += g.out;
+      if (g.ctx > totals.ctx) { totals.ctx = g.ctx; totals.cache = g.cache; }
+    }
+    return;
+  }
   const cacheRead = num(usage.cache_read_input_tokens);
   const cacheWrite = num(usage.cache_creation_input_tokens);
   const ctx = num(usage.input_tokens) + cacheRead + cacheWrite;
@@ -179,14 +350,15 @@ function scanFile(appId, fp, dayMs) {
 }
 
 /** 扫描某应用今天的 token 用量（带 TTL 缓存） */
-function scanApp(appId) {
+function scanApp(appId, extraRoots) {
   const hit = appCache.get(appId);
   const now = Date.now();
   if (hit && now - hit.ts < APP_TTL) return hit.totals;
 
   const dayMs = dayStartMs();
   const files = [];
-  for (const root of ROOTS[appId] || []) collectFiles(root, dayMs, files);
+  const roots = (ROOTS[appId] || []).concat((extraRoots || []).map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean));
+  for (const root of roots) collectFiles(root, dayMs, files);
   const totals = zero();
   for (const fp of files) {
     const t = appId === 'dsh' ? scanDshJson(fp, dayMs) : scanFile(appId, fp, dayMs);
@@ -211,6 +383,7 @@ function estimateCost(totals, prices) {
 
 module.exports = {
   scanApp, estimateCost, DEFAULT_PRICES, ROOTS,
+  discoverSource, sniffFile, extractUsage, candidateRoots,
   // 测试用：直接对指定文件跑解析（生产代码不用）
   _internals: { scanFile, scanDshJson, accumulateLine, zero, dayStartMs },
 };

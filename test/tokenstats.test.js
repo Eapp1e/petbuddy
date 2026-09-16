@@ -97,3 +97,33 @@ test('ZCode 流水：读 response.usage', () => {
   assert.strictEqual(t.ctx, 2100);
   assert.strictEqual(t.cache, 900);
 });
+
+test('通用用量提取：任意嵌套结构都能识别', () => {
+  const u1 = ts.extractUsage({ a: { b: [{ meta: { usage: { inputTokens: 10, outputTokens: 4, cachedInputTokens: 6 } } }] } });
+  assert.deepStrictEqual(u1, { in: 10, out: 4, cache: 6, ctx: 16 });
+  const u2 = ts.extractUsage({ payload: { info: { total_token_usage: { input_tokens: 7, output_tokens: 3 } } } });
+  assert.ok(u2 && u2.out === 3);
+  assert.strictEqual(ts.extractUsage({ nothing: 'here' }), null);
+});
+
+test('自动探测：在临时目录里找到用量来源', () => {
+  const os2 = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os2.tmpdir(), 'pb-disc-'));
+  const sub = path.join(dir, 'projects');
+  fs.mkdirSync(sub, { recursive: true });
+  const fp = path.join(sub, 'sess.jsonl');
+  fs.writeFileSync(fp, JSON.stringify({ message: { usage: { input_tokens: 5, output_tokens: 9 } } }), 'utf8');
+  const hits = ts.discoverSource('unknownapp', { extraRoots: [dir] });
+  assert.ok(hits.length >= 1, '应该命中一个来源');
+  assert.strictEqual(path.resolve(hits[0].file), path.resolve(fp));
+  assert.strictEqual(hits[0].sample.out, 9);
+});
+
+test('自动探测：没有用量的目录不会误报', () => {
+  const os2 = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os2.tmpdir(), 'pb-disc2-'));
+  fs.mkdirSync(path.join(dir, 'x'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'x', 'config.json'), '{"hello":"world"}', 'utf8');
+  const hits = ts.discoverSource('noopapp', { extraRoots: [dir] });
+  assert.strictEqual(hits.length, 0);
+});
