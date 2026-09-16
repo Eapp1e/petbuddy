@@ -71,3 +71,29 @@ test('坏行不影响解析', () => {
   const t = ts._internals.scanFile('workbuddy', fp, Date.now() - 86400000);
   assert.strictEqual(t.out, 7);
 });
+
+test('DSH 投影缓存：取会话累计值与当前上下文', () => {
+  const fp = tmpFile('session-x.json', [JSON.stringify({
+    record: {
+      rows: {
+        tokenUsage: { ver: 2, val: { totals: { uncachedInputTokens: 4422490, outputTokens: 427295, cacheReadTokens: 51373824, cacheWriteTokens: 0 } } },
+        contextPressure: { val: { surfaceTokens: 588910 } },
+      },
+    },
+  })]);
+  const t = ts._internals.scanDshJson(fp, Date.now() - 86400000);
+  assert.strictEqual(t.out, 427295);
+  assert.strictEqual(t.ctx, 588910, '上下文应取 surfaceTokens');
+  assert.strictEqual(t.cache, 51373824);
+});
+
+test('ZCode 流水：读 response.usage', () => {
+  const fp = tmpFile('model-io.jsonl', [JSON.stringify({
+    completedAt: today,
+    response: { usage: { inputTokens: 1200, outputTokens: 340, cachedInputTokens: 900 } },
+  })]);
+  const t = ts._internals.scanFile('zcode', fp, Date.now() - 86400000);
+  assert.strictEqual(t.out, 340);
+  assert.strictEqual(t.ctx, 2100);
+  assert.strictEqual(t.cache, 900);
+});

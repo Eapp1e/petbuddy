@@ -137,8 +137,8 @@
     border-radius: 6px; background: none; }
   #add-form .sub { color: #667; font-size: 11px; margin-top: 4px; }
   h4 { margin: 16px 0 4px; color: #7aa2ff; font-size: 12.5px; letter-spacing: .5px; }
-  #save-bar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-    z-index: 10; display: flex; align-items: center; justify-content: center;
+  #save-bar { position: fixed; bottom: 12px; left: 14px; right: auto; transform: none;
+    z-index: 10; display: flex; align-items: center; justify-content: flex-start;
     pointer-events: none; background: transparent; border: 0; padding: 0;}
   #msg { color: #7fd7a0; font-size: 12px; align-self: center; margin-right: auto; }
 </style>
@@ -763,7 +763,8 @@ document.querySelector('main').addEventListener('change', async (e) => {
   const el = e.target;
   const spec = FIELD_MAP[el.id];
   if (!spec || el.closest('#add-form') || el.closest('.app-card')) return;
-  if (typeof el.onchange === 'function') return; // 已有专门处理器的字段交给它们
+  // 注意：即使该字段自己带了 onchange 也要走这里 —— 用户要求"改任何一项都有反馈"，
+  // 而且这里只 patch 自己那一项，重复提交同样的值是安全的。
   const [section, key, type] = spec;
   let val = (el.type === 'checkbox') ? el.checked : el.value;
   if (type === 'float') val = parseFloat(val);
@@ -793,9 +794,14 @@ async function save() {
 
 let msgTimer = null;
 function flash(t, ms = 2600) {
-  $('#msg').textContent = t;
+  const el = $('#msg');
+  el.textContent = t;
+  el.classList.add('show');
   clearTimeout(msgTimer);
-  msgTimer = setTimeout(() => { $('#msg').textContent = ''; }, ms);
+  msgTimer = setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => { if (!el.classList.contains('show')) el.textContent = ''; }, 200);
+  }, ms);
 }
 
 async function refreshStatus() {

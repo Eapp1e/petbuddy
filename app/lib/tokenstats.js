@@ -29,7 +29,19 @@ const ROOTS = {
   codebuddy: [path.join(os.homedir(), '.codebuddy', 'projects')],
   claude: [path.join(os.homedir(), '.claude', 'projects')],
   codex: [path.join(os.homedir(), '.codex', 'sessions')],
+  // ZCode：模型 I/O 流水（每条带 response.usage）
+  zcode: [path.join(os.homedir(), '.zcode', 'cli', 'rollout')],
+  // DSH：投影缓存（每个会话一个 json，里面是 tokenUsage）
+  dsh: [
+    process.env.DSH_HOME,
+    path.join(os.homedir(), '.dsh'),
+    path.join(os.homedir(), 'DeepSeekHarness', 'dsh-data'),
+    'D:\\DeepSeekHarness\\dsh-data',
+  ].filter(Boolean),
 };
+
+/** 每个应用扫哪些扩展名（DSH 的投影缓存是 .json） */
+const EXTS = { dsh: ['.json'] };
 
 const fileCache = new Map();   // fp -> { key, size, day, totals }
 const appCache = new Map();    // appId -> { ts, totals }
@@ -48,7 +60,7 @@ function collectFiles(root, dayMs, out, depth = 0) {
     const fp = path.join(root, it.name);
     if (it.isDirectory()) {
       if (depth < 4) collectFiles(fp, dayMs, out, depth + 1);
-    } else if (it.name.endsWith('.jsonl')) {
+    } else if (it.name.endsWith('.jsonl') || it.name.endsWith('.json')) {
       try { if (fs.statSync(fp).mtimeMs >= dayMs) out.push(fp); } catch {}
     }
   }
@@ -64,6 +76,19 @@ function accumulateLine(appId, line, totals, dayMs, state) {
   if (typeof j.timestamp === 'string') ts = Date.parse(j.timestamp) || 0;
   else if (typeof j.ts === 'number') ts = j.ts;
   if (ts && ts < dayMs) return;
+
+  // ZCode：response.usage（AI SDK 风格，字段大小写不定）
+  if (appId === 'zcode') {
+    const u = (j.response && j.response.usage) || j.usage;
+    if (!u || typeof u !== 'object') return;
+    const inp = num(u.inputTokens || u.input_tokens || u.promptTokens || u.prompt_tokens);
+    const cac = num(u.cachedInputTokens || u.cached_input_tokens || u.cacheReadInputTokens);
+    const out2 = num(u.outputTokens || u.output_tokens || u.completionTokens || u.completion_tokens);
+    totals.out += out2;
+    const ctx = inp + cac;
+    if (ctx > totals.ctx) { totals.ctx = ctx; totals.cache = cac; }
+    return;
+  }
 
   if (appId === 'codex') {
     const p = j.payload;
@@ -89,6 +114,36 @@ function accumulateLine(appId, line, totals, dayMs, state) {
     totals.ctx = ctx;
     totals.cache = cacheRead;
   }
+}
+
+/**
+ * DSH 的投影缓存：一个会话一个 JSON，形如
+ *   record.rows.tokenUsage.val.totals = { uncachedInputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }
+ *   record.rows.contextPressure.val.surfaceTokens = 当前上下文大小
+ * tokenUsage 是**会话累计值**（和 Codex 一样，不做逐行求和）。
+ */
+function scanDshJson(fp, dayMs) {
+  let st;
+  try { st = fs.statSync(fp); } catch { return null; }
+  const key = `${st.size}:${Math.floor(st.mtimeMs)}`;
+  const day = dayKey();
+  const prev = fileCache.get(fp);
+  if (prev && prev.key === key && prev.day === day) return prev.totals;
+
+  let j;
+  try { j = JSON.parse(fs.readFileSync(fp, 'utf8')); } catch { return prev ? prev.totals : null; }
+  const rows = (j && j.record && j.record.rows) || {};
+  const totals = zero();
+
+  const tu = rows.tokenUsage && rows.tokenUsage.val && rows.tokenUsage.val.totals;
+  const surface = rows.contextPressure && rows.contextPressure.val && rows.contextPressure.val.surfaceTokens;
+  if (tu && typeof tu === 'object') {
+    totals.out = num(tu.outputTokens);
+    totals.cache = num(tu.cacheReadTokens);
+    totals.ctx = num(surface) || (num(tu.uncachedInputTokens) + num(tu.cacheReadTokens));
+  }
+  fileCache.set(fp, { key, size: st.size, day, totals });
+  return totals;
 }
 
 function scanFile(appId, fp, dayMs) {
@@ -134,7 +189,7 @@ function scanApp(appId) {
   for (const root of ROOTS[appId] || []) collectFiles(root, dayMs, files);
   const totals = zero();
   for (const fp of files) {
-    const t = scanFile(appId, fp, dayMs);
+    const t = appId === 'dsh' ? scanDshJson(fp, dayMs) : scanFile(appId, fp, dayMs);
     if (!t) continue;
     totals.out += t.out;                      // 生成量跨文件相加
     if (t.ctx > totals.ctx) {                 // 上下文取各文件最大值
@@ -157,5 +212,5 @@ function estimateCost(totals, prices) {
 module.exports = {
   scanApp, estimateCost, DEFAULT_PRICES, ROOTS,
   // 测试用：直接对指定文件跑解析（生产代码不用）
-  _internals: { scanFile, accumulateLine, zero, dayStartMs },
+  _internals: { scanFile, scanDshJson, accumulateLine, zero, dayStartMs },
 };

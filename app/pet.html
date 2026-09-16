@@ -209,6 +209,15 @@
     --ring: #4fd8ff;
   }
   #pet.working ~ #spinner, #spinner.on { opacity: .9; }
+  /* 鼠标移上来时的小反应：抬头 + 耳朵抖一下 */
+  #pet.hover-react { animation: hover-react .62s ease-out; }
+  @keyframes hover-react {
+    0%   { transform: translateY(0) scale(1, 1); }
+    22%  { transform: translateY(-7px) scale(1.03, .95); }
+    46%  { transform: translateY(0) scale(.98, 1.04); }
+    72%  { transform: translateY(-2px) scale(1.01, .99); }
+    100% { transform: translateY(0) scale(1, 1); }
+  }
   #spinner::before, #spinner::after { content: ''; position: absolute; inset: 0; border-radius: 50%; }
   #spinner > i { display: none; }
   @keyframes spin { to { transform: translateX(-50%) rotate(360deg); } }
@@ -846,7 +855,7 @@ function renderPanel(snap) {
     row.className = 'p-row' + (app.running ? '' : ' off');
     if (!app.running) {
       // not running: dimmed icon + name, muted state chip on the right
-      const toksOff = app.tokens && app.tokens.out ? `今日生成 ${fmtTok(app.tokens.out)}` : '';
+      const toksOff = app.tokens && app.tokens.out ? `${fmtTok(app.tokens.out)} tokens` : '';
       row.innerHTML =
         `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
          <div class="p-main"><div class="p-name">${app.name}</div>${toksOff ? `<div class="p-sub">${toksOff}</div>` : ''}</div>
@@ -871,7 +880,7 @@ function renderPanel(snap) {
        <div class="p-main"><div class="p-name">${app.name}</div><div class="p-sub"></div></div>
        <div class="p-state ${app.state}">${STATE_TEXT[app.state] || app.state}${elapsed}</div>`;
     const tk = app.tokens;
-    const tokTxt = tk && tk.out ? ` · 今日生成 ${fmtTok(tk.out)}` : '';
+    const tokTxt = tk && tk.out ? `  ${fmtTok(tk.out)} tokens` : '';
     row.querySelector('.p-sub').textContent = sub + tokTxt;
     if (tk && (tk.out || tk.ctx)) {
       row.title = `今日生成 ${tk.out || 0} tokens`
@@ -963,10 +972,12 @@ bubble.addEventListener('click', cycleBubble);
 function hideMenu() { menu.style.display = 'none'; }
 wrap.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  const mw = menu.offsetWidth || 130, mh = menu.offsetHeight || 130;
-  menu.style.left = Math.max(6, Math.min(e.clientX + 4, window.innerWidth - mw - 6)) + 'px';
-  menu.style.top = Math.max(6, Math.min(e.clientY + 4, window.innerHeight - mh - 6)) + 'px';
+  // 必须先显示再测量：display:none 时 offsetHeight 是 0，会导致贴底时被裁掉（曾把"退出"切掉）
   menu.style.display = 'block';
+  menu.style.left = '0px'; menu.style.top = '0px';
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(4, Math.min(e.clientX + 4, window.innerWidth - mw - 4)) + 'px';
+  menu.style.top = Math.max(4, Math.min(e.clientY + 4, window.innerHeight - mh - 4)) + 'px';
 });
 menu.addEventListener('click', (e) => {
   const act = e.target.dataset && e.target.dataset.act;
@@ -978,6 +989,15 @@ menu.addEventListener('click', (e) => {
   else if (act === 'logs') window.petbuddy.openDataDir();
   else if (act === 'quit') window.petbuddy.quit();
 });
+// 鼠标移上来时给个回应（参考 codex 桌宠：靠近会动一下）
+wrap.addEventListener('mouseenter', () => {
+  if (drag) return;
+  pet.classList.add('hover-react');
+  clearTimeout(wrap._hoverT);
+  wrap._hoverT = setTimeout(() => pet.classList.remove('hover-react'), 700);
+});
+wrap.addEventListener('mouseleave', () => pet.classList.remove('hover-react'));
+
 window.addEventListener('mousedown', (e) => {
   if (!menu.contains(e.target)) hideMenu();
 }, true);
