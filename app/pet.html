@@ -863,10 +863,8 @@ window.addEventListener('mousemove', (e) => {
 });
 window.addEventListener('mouseup', () => {
   if (drag && !drag.moved) {
-    // with several apps running, a click cycles which one the bubble shows
-    const working = (lastSnap?.apps || []).filter(x => x.running && x.state === 'working');
-    if (working.length > 1) cycleBubble();
-    else togglePanel();
+    // 点桌宠始终开任务面板（多应用时不再被"切换气泡"抢占；切换气泡请点气泡本身）
+    togglePanel();
   }
   if (drag && drag.moved) window.petbuddy.dragEnd();
   drag = null;
