@@ -211,6 +211,7 @@ function aggregateState() {
   let best = 'idle';
   const rank = { idle: 0, done: 1, error: 2, working: 3, confirm: 4 };
   for (const s of Object.values(appStates)) {
+    if (settings.integrations.enabled[s.id] === false) continue; // 停用的应用不参与聚合
     if (s.state === 'confirm') return 'confirm';
     if (rank[s.state] > rank[best]) best = s.state;
   }
@@ -222,7 +223,9 @@ function snapshot() {
     version: VERSION,
     port: serverPort,
     aggregate: aggregateState(),
-    apps: Object.values(appStates).map((s) => {
+    apps: Object.values(appStates)
+      .filter((s) => settings.integrations.enabled[s.id] !== false) // 停用 = 完全不显示
+      .map((s) => {
       const meta = s.meta;
       return {
         id: s.id, name: meta.name, color: meta.color, emoji: meta.emoji,
@@ -633,7 +636,9 @@ async function watchdogTick() {
   if (watchdogBusy) return;
   watchdogBusy = true;
   try {
-    const metas = Object.values(appStates).map((s) => s.meta);
+    const metas = Object.values(appStates)
+      .filter((s) => settings.integrations.enabled[s.id] !== false)
+      .map((s) => s.meta);
     const running = await pollApps(metas);
     if (running === null) return; // flaky tasklist: keep previous flags
     const now = Date.now();
@@ -641,6 +646,16 @@ async function watchdogTick() {
     let changed = false;
     for (const id of Object.keys(appStates)) {
       const s = appStates[id];
+      if (settings.integrations.enabled[id] === false) {
+        // 停用：清掉运行痕迹，避免再启用时残留旧状态
+        if (s.running || s.state !== 'idle' || s.title || s.detail || s.action || s.target || s.tasks) {
+          s.running = false; s.state = 'idle';
+          s.title = ''; s.detail = ''; s.action = ''; s.target = '';
+          s.tasks = 0; s.todos = [];
+          changed = true;
+        }
+        continue;
+      }
       // bridge events are authoritative for aliveness too: a CLI/hook source
       // may not match any watched process name (e.g. codex desktop, dsh node).
       // thinking phases / model reconnects are silent but alive, so the
