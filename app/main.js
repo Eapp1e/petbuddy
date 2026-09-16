@@ -69,6 +69,10 @@ function log(...args) {
 process.on('uncaughtException', (e) => log('uncaughtException', e.stack || e));
 process.on('unhandledRejection', (e) => log('unhandledRejection', (e && e.stack) || e));
 
+// Windows 上透明小窗口对 GPU 驱动很敏感（驱动异常时整个渲染进程会被杀，表现为
+// 桌宠不显示 / 设置窗口全黑）。桌宠面积很小，走软件渲染更稳，避免这类白屏。
+app.disableHardwareAcceleration();
+
 // --------------------------------------------------------- single instance --
 const gotLock = app.requestSingleInstanceLock();
 try { fs.appendFileSync(store.DATA_DIR + '/boot-debug.txt', '\nlock=' + gotLock); } catch {}
@@ -517,7 +521,7 @@ function createPetWindow() {
   });
   if (settings.appearance.alwaysOnTop) petWindow.setAlwaysOnTop(true, 'screen-saver');
   petWindow.setMenu(null);
-  petWindow.loadFile('pet.html');
+  petWindow.loadFile(path.join(__dirname, 'pet.html'));
   petWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 
   petWindow.on('moved', () => {
@@ -552,7 +556,7 @@ function createSettingsWindow() {
     },
   });
   settingsWindow.setMenu(null);
-  settingsWindow.loadFile('settings.html');
+  settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
   settingsWindow.on('closed', () => { settingsWindow = null; });
 }
 
