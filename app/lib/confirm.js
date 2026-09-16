@@ -3,7 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const apps = require('./apps');
 
-const FOCUS_SEND_PS1 = path.join(__dirname, '..', 'bridge', 'focus-send.ps1');
+const FOCUS_SEND_PS1 = path.join(__dirname, '..', '..', 'bridge', 'focus-send.ps1');
 
 /**
  * Send a SendKeys sequence to an app's main window.

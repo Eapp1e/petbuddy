@@ -956,7 +956,7 @@ function setupIpc() {
   });
   ipcMain.handle('pb:integration', async (_e, { action, appId }) => {
     try {
-      const mod = await import(pathToFileURL(path.join(__dirname, 'integrations', 'install.mjs')).href);
+      const mod = await import(pathToFileURL(path.join(__dirname, '..', 'integrations', 'install.mjs')).href);
       if (action === 'status') return { ok: true, status: await mod.statusAll() };
       if (action === 'install') return { ok: true, result: await mod.installOne(appId) };
       if (action === 'uninstall') return { ok: true, result: await mod.uninstallOne(appId) };

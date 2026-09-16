@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const apps = require('../lib/apps.js');
+const apps = require('../app/lib/apps.js');
 
 const PET_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BRIDGE = path.join(PET_ROOT, 'bridge', 'pet-bridge.mjs');
@@ -216,8 +216,25 @@ function codexNotifyStatus() {
 
 // ------------------------------------------------------------ style: dsh-patch
 function dshHome() {
-  for (const c of cands) if (c && fs.existsSync(c)) return c;
-  return cands[1];
+  // DSH 的 home 因安装方式而异：优先环境变量，其次常见位置；
+  // 若某候选里已存在 profiles/web/cordis.patch.yml，直接认为就是它。
+  const cands = [
+    process.env.DSH_HOME,
+    process.env.DSH_DATA_HOME,
+    path.join(HOME, '.deepseek-harness'),
+    path.join(HOME, '.dsh'),
+    'D:\\DeepSeekHarness\\dsh-data',
+    path.join(HOME, 'DeepSeekHarness', 'dsh-data'),
+  ].filter(Boolean);
+  for (const c of cands) {
+    try {
+      if (fs.existsSync(path.join(c, 'profiles', 'web', 'cordis.patch.yml'))) return c;
+    } catch {}
+  }
+  for (const c of cands) {
+    try { if (fs.existsSync(c)) return c; } catch {}
+  }
+  return cands[0];
 }
 const DSH_HOOKS_JSON = path.join(PET_HOME, 'dsh-hooks.json');
 

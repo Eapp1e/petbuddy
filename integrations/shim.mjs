@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const findNode = require('../lib/node-resolve.cjs').findNode;
+const findNode = require('../app/lib/node-resolve.cjs').findNode;
 
 const PET_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PET_HOME = process.env.PETBUDDY_HOME || path.join(os.homedir(), '.petbuddy');
