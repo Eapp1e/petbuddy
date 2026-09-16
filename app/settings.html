@@ -268,6 +268,7 @@
       </div>
     <div class="row"><label>启动时隐藏</label><input type="checkbox" id="startHidden" title="开机后桌宠先隐藏,有应用运行时才出现"></div>
     <div class="row"><label>数据目录</label><button class="act ghost" id="open-data" title="配置、形象与日志都在这里">打开 ~/.petbuddy</button></div>
+    <div class="row"><label><span class="tip wide" data-tip="打包版才可用：从 Release 的 latest.yml 检查新版本，下载完成后重启生效。开发模式会提示不支持。">检查更新</span></label><button class="act ghost" id="check-update" title="检查是否有新版本（仅打包版）">检查更新</button></div>
   </section>
 
   <div id="save-bar">
@@ -789,6 +790,15 @@ $('#na-save').onclick = async () => {
 };
 
 $('#save').onclick = save;
+$('#check-update').onclick = async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = '检查中…';
+  const r = await window.petbuddy.checkUpdate().catch((x) => ({ ok: false, error: String(x) }));
+  btn.disabled = false; btn.textContent = '检查更新';
+  if (!r.ok) flash('检查更新失败: ' + (r.error || ''), 5000);
+  else if (r.hasUpdate) flash(`发现新版本 ${r.version}（当前 ${r.current}），正在下载…`, 6000);
+  else flash(`已是最新版本（${r.current}）`);
+};
 $('#open-data').onclick = () => window.petbuddy.openDataDir();
 $('#petdex-link').onclick = () => window.petbuddy.openPetdex();
 $('#win-min').onclick = () => window.petbuddy.winMin();

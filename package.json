@@ -8,7 +8,9 @@
     "start": "electron .",
     "start-hidden": "electron . --hidden",
     "install-integrations": "node integrations/install.mjs install",
-    "uninstall-integrations": "node integrations/install.mjs uninstall"
+    "uninstall-integrations": "node integrations/install.mjs uninstall",
+    "test": "node --test",
+    "build": "electron-builder --win nsis portable --publish never"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -68,6 +70,16 @@
     "electronDist": "node_modules/electron/dist",
     "portable": {
       "artifactName": "PetBuddy-${version}-portable.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Eapp1e",
+        "repo": "petbuddy"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

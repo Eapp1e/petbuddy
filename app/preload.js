@@ -7,7 +7,8 @@ contextBridge.exposeInMainWorld('petbuddy', {
   onState: (cb) => ipcRenderer.on('pb:state', (_e, snap) => cb(snap)),
 
   // pet window
-  decide: (id, decision) => ipcRenderer.invoke('pb:decide', { id, decision }),
+  checkUpdate: () => ipcRenderer.invoke('pb:check-update'),
+  decide: (id, decision, text) => ipcRenderer.invoke('pb:decide', { id, decision, text }),
   setNeedHeight: (px) => ipcRenderer.invoke('pb:set-need-height', px),
   openSettings: () => ipcRenderer.invoke('pb:open-settings'),
   quit: () => ipcRenderer.invoke('pb:quit'),

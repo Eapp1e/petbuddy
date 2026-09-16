@@ -50,6 +50,21 @@
   .confirm-item button:hover { filter: brightness(1.15); }
   .confirm-item .ok { background: #2e9e5b; } .confirm-item .no { background: #c0483f; }
   .confirm-item .skip { background: #555c; flex: .6; }
+    /* 提问卡：自由文本输入 + 快捷选项 */
+  .confirm-item .c-input {
+    width: 100%; margin-top: 6px; padding: 6px 8px;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
+    border-radius: 7px; color: #dde; font-size: 12px; font-family: inherit; outline: none;
+  }
+  .confirm-item .c-input:focus { border-color: rgba(120,200,255,.55); }
+  .confirm-item .c-opts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .confirm-item .c-opt {
+    padding: 3px 8px; font-size: 11px; border-radius: 6px; cursor: pointer;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #cfd6e2;
+  }
+  .confirm-item .c-opt:hover { background: rgba(255,255,255,.16); }
+  .confirm-item .send { background: rgba(60,150,235,.9); }
+  .confirm-item .send:hover { background: rgba(80,170,255,1); }
   .confirm-item button:disabled { opacity: .35; cursor: default; filter: none; }
   #toast { position: absolute; left: 50%; transform: translateX(-50%);
     background: rgba(30,32,40,.95); color: #fff; font-size: 11.5px; padding: 6px 14px; white-space: nowrap;
@@ -690,7 +705,18 @@ function renderCards(snap) {
     if (!el) {
       el = document.createElement('div');
       el.className = 'confirm-item' + (c.rest ? ' rest' : '');
-      el.innerHTML = '<div class="c-app"></div><div class="c-q"></div><div class="c-detail"></div><div class="c-btns"><button class="ok"></button><button class="no"></button><button class="skip">忽略</button></div>';
+      el.innerHTML = '<div class="c-app"></div><div class="c-q"></div><div class="c-detail"></div><div class="c-opts"></div><input class="c-input" type="text" maxlength="500" placeholder="输入回复后回车发送"><div class="c-btns"><button class="send">发送</button><button class="ok"></button><button class="no"></button><button class="skip">忽略</button></div>';
+      const send = () => {
+        const v = el.querySelector('.c-input').value.trim();
+        if (!v) return;
+        el.querySelector('.c-input').value = '';
+        window.petbuddy.decide(c.id, 'answer', v);
+      };
+      el.querySelector('.send').onclick = send;
+      el.querySelector('.c-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); send(); }
+      });
+      el.querySelector('.c-input').addEventListener('mousedown', (e) => e.stopPropagation());
       el.querySelector('.ok').onclick = () => window.petbuddy.decide(c.id, 'approve');
       el.querySelector('.no').onclick = () => window.petbuddy.decide(c.id, 'deny');
       el.querySelector('.skip').onclick = () => window.petbuddy.decide(c.id, 'dismiss');
@@ -708,6 +734,23 @@ function renderCards(snap) {
     noBtn.textContent = c.denyText || '拒绝';
     okBtn.disabled = !c.canApprove; noBtn.disabled = !c.canDeny;
     el.querySelector('.skip').style.display = c.rest ? 'none' : '';
+    // 提问卡：显示输入框与"发送"，隐藏允许/拒绝；其余卡片反之
+    const free = !!c.freeText;
+    el.querySelector('.c-input').style.display = free ? '' : 'none';
+    el.querySelector('.send').style.display = free ? '' : 'none';
+    okBtn.style.display = free ? 'none' : '';
+    noBtn.style.display = free ? 'none' : '';
+    const optWrap = el.querySelector('.c-opts');
+    optWrap.innerHTML = '';
+    if (free && (c.options || []).length) {
+      for (const o of c.options) {
+        const b = document.createElement('button');
+        b.className = 'c-opt';
+        b.textContent = o;
+        b.onclick = () => window.petbuddy.decide(c.id, 'answer', o);
+        optWrap.appendChild(b);
+      }
+    }
   }
 }
 function layoutStack(snap) {
@@ -764,6 +807,13 @@ setInterval(() => {
   el.textContent = ` · ${fmtElapsed(Date.now() - bubbleElapsedFrom)}`;
 }, 1000);
 
+function fmtTok(n) {
+  if (!n) return '';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return String(n);
+}
+
 function renderPanel(snap) {
   const rows = $('#panel-rows');
   rows.innerHTML = '';
@@ -772,9 +822,10 @@ function renderPanel(snap) {
     row.className = 'p-row' + (app.running ? '' : ' off');
     if (!app.running) {
       // not running: dimmed icon + name, muted state chip on the right
+      const toksOff = app.tokens && app.tokens.out ? `今日生成 ${fmtTok(app.tokens.out)}` : '';
       row.innerHTML =
         `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
-         <div class="p-main"><div class="p-name">${app.name}</div></div>
+         <div class="p-main"><div class="p-name">${app.name}</div>${toksOff ? `<div class="p-sub">${toksOff}</div>` : ''}</div>
          <div class="p-state off">未运行</div>`;
       rows.appendChild(row);
       continue;
@@ -790,7 +841,14 @@ function renderPanel(snap) {
       `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
        <div class="p-main"><div class="p-name">${app.name}</div><div class="p-sub"></div></div>
        <div class="p-state ${app.state}">${STATE_TEXT[app.state] || app.state}${elapsed}</div>`;
-    row.querySelector('.p-sub').textContent = sub;
+    const tk = app.tokens;
+    const tokTxt = tk && tk.out ? ` · 今日生成 ${fmtTok(tk.out)}` : '';
+    row.querySelector('.p-sub').textContent = sub + tokTxt;
+    if (tk && (tk.out || tk.ctx)) {
+      row.title = `今日生成 ${tk.out || 0} tokens`
+        + (tk.ctx ? ` · 上下文峰值 ${tk.ctx}` : '')
+        + (tk.cache ? ` · 其中缓存读取 ${tk.cache}` : '');
+    }
     if (todos.length) {
       const list = document.createElement('div');
       list.className = 'p-todos';

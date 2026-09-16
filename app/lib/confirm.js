@@ -46,4 +46,18 @@ function keySequences(appId, settings) {
   };
 }
 
-module.exports = { sendKeysToApp, focusTarget, keySequences, FOCUS_SEND_PS1 };
+/** SendKeys 特殊字符转义（+ ^ % ~ ( ) { } [ ] 需用花括号包起来） */
+function escapeSendKeys(text) {
+  // 顺序很重要：先转义特殊字符，再把换行换成 {ENTER}，
+  // 否则刚插进去的 {ENTER} 会被再次转义成 {{}ENTER{}}（测试抓到过的真实 bug）
+  return String(text == null ? '' : text)
+    .replace(/[+^%~(){}\[\]]/g, (ch) => '{' + ch + '}')
+    .replace(/[\r\n]+/g, '{ENTER}');
+}
+
+/** 把一段自由文本转成"输入文本并回车"的按键序列 */
+function answerSequence(text) {
+  return escapeSendKeys(text) + '{ENTER}';
+}
+
+module.exports = { sendKeysToApp, focusTarget, keySequences, FOCUS_SEND_PS1, escapeSendKeys, answerSequence };

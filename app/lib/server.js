@@ -6,9 +6,9 @@ const http = require('http');
  *
  *   GET  /api/ping              -> {ok:true, version}
  *   GET  /api/status            -> full snapshot {apps:[], confirms:[]}
- *   POST /api/event             -> {app, event, sessionId?, title?, detail?, question?, toolName?}
+ *   POST /api/event             -> {app, event, sessionId?, title?, detail?, question?, options?, toolName?}
  *   POST /api/announce          -> {app}  (heartbeat: "this app is alive")
- *   POST /api/confirm           -> {id, decision: 'approve'|'deny'|'dismiss'}
+ *   POST /api/confirm           -> {id, decision: 'approve'|'deny'|'dismiss'|'answer', text?}
  */
 function createApiServer({ version, handleEvent, handleConfirm, snapshot }) {
   const server = http.createServer((req, res) => {
@@ -56,7 +56,7 @@ function createApiServer({ version, handleEvent, handleConfirm, snapshot }) {
         if (req.method === 'POST' && url.pathname === '/api/confirm') {
           const body = await readBody();
           if (!body || !body.id) return send(400, { ok: false, error: 'bad id' });
-          const result = await handleConfirm(body.id, body.decision || 'dismiss');
+          const result = await handleConfirm(body.id, body.decision || 'dismiss', body.text);
           return send(200, { ok: true, ...result });
         }
         return send(404, { ok: false, error: 'not found' });

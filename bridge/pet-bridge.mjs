@@ -167,6 +167,21 @@ function normalize(event, payload) {
       return { event: 'prompt', title: short(cleaned || raw, 100) };
     }
     case 'pretooluse': case 'pre-tool-use': {
+      // Claude 系的 AskUserQuestion 是"在问你"，不是要权限 —— 转成可自由文本回复的提问卡
+      if (/^askuserquestion$/i.test(String(toolName))) {
+        const qs = Array.isArray(toolInput.questions) ? toolInput.questions : [];
+        const first = qs[0] || {};
+        const opts = Array.isArray(first.options)
+          ? first.options.map((o) => short(String((o && (o.label || o.text)) || o), 40)).filter(Boolean)
+          : [];
+        const extra = qs.length > 1 ? `（共 ${qs.length} 个问题）` : '';
+        return {
+          event: 'question',
+          question: short(String(first.question || first.header || '需要你回答') + extra, 160),
+          options: opts,
+          detail: short(String(toolName) + (opts.length ? ' · ' + opts.join(' / ') : ''), 120),
+        };
+      }
       const out = {
         event: 'pre-tool',
         detail: toolDetail(toolName, toolInput),

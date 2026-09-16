@@ -49,12 +49,14 @@ npm run install-integrations
 - **状态镜像**：每个应用的 运行中 / 待确认 / 完成 / 出错 状态、当前工具调用、步数
 - **真实任务计时**：起点读自各应用**自己的会话记录**（Claude 系 transcript、DSH 投影缓存），桌宠重启不归零；应用长时间"思考/深度搜索"不发钩子事件时，照样能从它的记录判定"仍在运行"
 - **多任务并行**：同一应用开多个会话/任务时按 sessionId 分别跟踪，气泡显示"· N 个任务并行"，全部结束才算完成；10 分钟无事件的会话自动退役
+- **Token 用量**：从各 Agent 自己的会话记录里统计**今日生成量**与上下文峰值（Claude 系读 message.usage，Codex 读 rollout 的累计值），任务面板每行直接显示"今日生成 917k"，鼠标悬停看上下文/缓存明细
 
 <img src="docs/07-panel.png" width="55%" alt="任务面板">
 
 ### 确认直达
 
 - 应用弹出权限请求时，桌宠弹出确认卡，点"允许"自动聚焦该应用窗口并发送按键（SendKeys 序列，可在设置中自定义）
+- **提问直达**：Agent 反问你问题时（如 Claude 的 AskUserQuestion），桌宠显示提问卡 —— 可以直接输入一句话回答、或点它给出的选项，答复会通过同一套按键通道送回 Agent，**全程不用切窗口**
 - 按键序列支持多步（如 `1~~{ENTER}`），每个应用可单独配置并一键测试
 
 ### 桌宠外观
@@ -76,7 +78,9 @@ npm run install-integrations
 
 ## 设置窗口
 
-外观（大小 / 透明度 / 精灵 / 圆环 / 动画速度 / 置顶 / 气泡）、行为（自动隐藏 / 提示音 / 超时 / 休息提醒）、应用集成（启停 / 装卸 / ⚙修改名称·颜色·图标·进程名·端口·按键 / 测试按键）、系统（开机自启 / 启动隐藏）；关键处均有悬浮说明。
+外观（大小 / 透明度 / 精灵 / 圆环 / 动画速度 / 置顶 / 气泡）、行为（自动隐藏 / 提示音 / 超时 / 休息提醒）、应用集成（启停 / 装卸 / ⚙修改名称·颜色·图标·进程名·端口·按键 / 测试按键）、系统（开机自启 / 启动隐藏 / 检查更新）；关键处均有悬浮说明。
+
+**自动更新**：打包版启动 20 秒后会静默检查新版本，设置 → 系统里的"检查更新"也可以手动触发。更新源走 `package.json` 的 `build.publish`（当前指向 GitHub Release），因此**发版时要把 `latest.yml` 一起传到 Release 附件**（仓库里的 `.github/workflows/release.yml` 打 tag 时会自动带上）。
 
 <img src="docs/11-settings.png" width="55%" alt="设置窗口">
 
@@ -125,12 +129,15 @@ npm run install-integrations    # 一键为机器上已装的 Agent 自动安装
 ```
 GET  /api/ping          存活检查
 GET  /api/status        完整状态快照
-POST /api/event         {app, event, title?, detail?, question?}
+POST /api/event         {app, event, title?, detail?, question?, options?}
 POST /api/announce      {app} 心跳
-POST /api/confirm       {id, decision: approve|deny|dismiss}
+POST /api/confirm       {id, decision: approve|deny|dismiss|answer, text?}
 ```
 
-`event` 取值：`announce / session-start / prompt / pre-tool / post-tool / post-tool-failure / permission / stop / message / turn-complete / compact`
+`event` 取值：`announce / session-start / prompt / pre-tool / post-tool / post-tool-failure / permission / question / stop / message / turn-complete / compact`
+
+- `permission` → 确认卡（允许/拒绝，走按键注入）
+- `question` → **提问卡**：可带 `options: ["选项A","选项B"]`，用户既能点选项也能手打回答，答复以 `decision: "answer" + text` 回传后注入到该应用窗口
 
 手动测试：
 
@@ -173,14 +180,15 @@ curl -X POST http://127.0.0.1:47650/api/event -d "{\"app\":\"zcode\",\"event\":\
 
 ```
 app/               应用本体
-  main.js            Electron 主进程（窗口 / 托盘 / 看门狗 / IPC）
-  pet.html           桌宠（精灵渲染 / 状态气泡 / 确认卡 / 圆环样式）
+  main.js            Electron 主进程（窗口 / 托盘 / 看门狗 / IPC / 自动更新）
+  pet.html           桌宠（精灵渲染 / 状态气泡 / 确认卡·提问卡 / 圆环样式）
   settings.html      设置窗口（外观 / 行为 / 应用集成 / 系统）
   preload.js         渲染进程桥接
-  lib/               状态机、应用注册表、任务计时、按键注入、HTTP 服务
+  lib/               状态机、应用注册表、任务计时、token 统计、按键注入、HTTP 服务
   assets/            图标与精灵素材
 bridge/            钩子桥接脚本（各应用钩子负载 → 统一事件）
 integrations/      接入安装器（zcode-config / claude-file / codex-notify / dsh-patch）
+test/              单元测试（node --test）
 docs/              截图与图标
 ```
 
@@ -197,6 +205,16 @@ docs/              截图与图标
 - **DSH** 的 hooks 配置只在服务启动时读取一次——修改桥接配置后需重启 DSH 服务
 - 钩子命令统一走 `~/.petbuddy/pet-bridge.cmd` 垫片（兼容 cmd / PS1 / 直接 spawn 三种执行环境）
 - 开机自启写注册表 `HKCU\...\Run`，指向当前应用目录
+
+## 开发与测试
+
+```bash
+npm test          # node --test：token 解析、按键转义、语法巡检
+npm run build     # 打 Windows 安装包 + 便携版（输出到 release/）
+```
+
+CI 在 `.github/workflows/ci.yml`：每次 push / PR 跑测试；打 `v*` tag 时 `release.yml`
+自动构建并把 `Setup.exe` / `portable.exe` / `latest.yml` 一起挂到 Release。
 
 ## 致谢
 

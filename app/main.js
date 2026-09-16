@@ -12,8 +12,9 @@ const store = require('./lib/store');
 const { ensureIcons } = require('./lib/icon');
 const { createApiServer, listen } = require('./lib/server');
 const { pollApps } = require('./lib/watchdog');
-const { sendKeysToApp, focusTarget, keySequences } = require('./lib/confirm');
+const { sendKeysToApp, focusTarget, keySequences, answerSequence } = require('./lib/confirm');
 const taskTimer = require('./lib/tasktimer');
+const tokenstats = require('./lib/tokenstats');
 
 const VERSION = require('../package.json').version;
 const ASSETS = path.join(__dirname, 'assets');
@@ -72,6 +73,33 @@ process.on('unhandledRejection', (e) => log('unhandledRejection', (e && e.stack)
 // Windows 上透明小窗口对 GPU 驱动很敏感（驱动异常时整个渲染进程会被杀，表现为
 // 桌宠不显示 / 设置窗口全黑）。桌宠面积很小，走软件渲染更稳，避免这类白屏。
 app.disableHardwareAcceleration();
+
+// --------------------------------------------------------------- updater ---
+// 自动更新：只在打包版启用（开发模式没有 app-update.yml）。
+// 更新源来自 package.json 的 build.publish（打包时写进 resources/app-update.yml），
+// 因此发布时必须把 latest.yml 一起传到 Release 里。
+let updater = null;
+function setupUpdater() {
+  if (!app.isPackaged) return;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    updater = autoUpdater;
+    autoUpdater.autoDownload = true;
+    autoUpdater.logger = {
+      info: (m) => log('updater', String(m)),
+      warn: (m) => log('updater warn', String(m)),
+      error: (m) => log('updater error', String(m)),
+      debug: () => {},
+    };
+    autoUpdater.on('update-available', (i) => log('update available', i && i.version));
+    autoUpdater.on('update-downloaded', (i) => log('update downloaded', i && i.version, '- 重启后生效'));
+    autoUpdater.on('error', (e) => log('update error', String((e && e.message) || e)));
+    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 20000);
+    log('updater armed');
+  } catch (e) {
+    log('updater unavailable', String((e && e.message) || e));
+  }
+}
 
 // --------------------------------------------------------- single instance --
 const gotLock = app.requestSingleInstanceLock();
@@ -239,6 +267,7 @@ function snapshot() {
         action: s.action || '', target: s.target || '',
         startedAt: s.startedAt || 0,
         since: s.since, lastTs: s.lastTs,
+        tokens: s.tokens || null,
       };
     }),
     petsDir: pathToFileURL(path.join(store.DATA_DIR, 'pets')).href.replace(/$/, '/'),
@@ -246,6 +275,7 @@ function snapshot() {
       id: c.id, app: c.app, question: c.question, detail: c.detail, ts: c.ts,
       canApprove: !!c.canApprove, canDeny: !!c.canDeny,
       rest: !!c.rest, approveText: c.approveText, denyText: c.denyText,
+      freeText: !!c.freeText, options: Array.isArray(c.options) ? c.options : [],
     })),
     settings,
     pinned: userPinned,
@@ -371,16 +401,20 @@ function handleEvent(body) {
       setAppState(appId, { state: 'working', detail, errors: s.errors + 1 });
       Object.assign(sess, { state: 'working', detail, errors: sess.errors + 1 });
       break;
-    case 'permission': {
+    case 'permission':
+    case 'question': {
       sess.state = 'confirm'; sess.detail = detail;
       const id = `c${Date.now().toString(36)}-${++confirmSeq}`;
       const keys = keySequences(appId, settings);
+      const freeText = ev === 'question' || !!body.freeText;
       const card = {
         id, app: appId,
-        question: clip(String(body.question || body.title || '需要确认'), 200),
+        question: clip(String(body.question || body.title || (freeText ? '需要你回答' : '需要确认')), 200),
         detail,
+        freeText,
+        options: Array.isArray(body.options) ? body.options.slice(0, 6).map(String) : [],
         ts: Date.now(), status: 'pending',
-        canApprove: !!keys.approve, canDeny: !!keys.deny,
+        canApprove: !freeText && !!keys.approve, canDeny: !freeText && !!keys.deny,
       };
       confirms.set(id, card);
       setAppState(appId, { state: 'confirm', title: title || card.question });
@@ -422,7 +456,7 @@ function handleEvent(body) {
   return {};
 }
 
-async function handleConfirm(id, decision) {
+async function handleConfirm(id, decision, answerText) {
   const card = confirms.get(id);
   if (!card || card.status !== 'pending') return { found: false };
   card.status = decision === 'approve' ? 'approved' : decision === 'deny' ? 'denied' : 'dismissed';
@@ -444,7 +478,13 @@ async function handleConfirm(id, decision) {
 
   const st = appStates[card.app];
   let action = { sent: false };
-  if (decision === 'approve' || decision === 'deny') {
+  if (decision === 'answer' && card.freeText) {
+    const text = String(answerText == null ? '' : answerText).slice(0, 600).trim();
+    if (text) {
+      action = await sendKeysToApp(focusTarget(card.app), answerSequence(text));
+      log('confirm answer', card.app, 'text:', text.slice(0, 80), '=>', JSON.stringify(action));
+    }
+  } else if (decision === 'approve' || decision === 'deny') {
     const keys = keySequences(card.app, settings);
     const seq = decision === 'approve' ? keys.approve : keys.deny;
     if (seq) {
@@ -636,6 +676,11 @@ async function watchdogTick() {
   if (watchdogBusy) return;
   watchdogBusy = true;
   try {
+    // token 用量：模块内部按应用缓存 60s，日常调用是零成本的
+    for (const s of Object.values(appStates)) {
+      if (settings.integrations.enabled[s.id] === false) continue;
+      try { s.tokens = tokenstats.scanApp(s.id); } catch {}
+    }
     const metas = Object.values(appStates)
       .filter((s) => settings.integrations.enabled[s.id] !== false)
       .map((s) => s.meta);
@@ -747,7 +792,18 @@ async function watchdogTick() {
 // ------------------------------------------------------------------- IPC ----
 function setupIpc() {
   ipcMain.handle('pb:get-state', () => snapshot());
-  ipcMain.handle('pb:decide', (_e, { id, decision }) => handleConfirm(id, decision));
+  ipcMain.handle('pb:decide', (_e, { id, decision, text }) => handleConfirm(id, decision, text));
+  ipcMain.handle('pb:check-update', async () => {
+    if (!app.isPackaged) return { ok: false, error: '开发模式不检查更新' };
+    if (!updater) return { ok: false, error: '更新组件未启用' };
+    try {
+      const r = await updater.checkForUpdates();
+      const v = r && r.updateInfo && r.updateInfo.version;
+      return { ok: true, version: v, current: VERSION, hasUpdate: !!(v && v !== VERSION) };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  });
   ipcMain.handle('pb:open-settings', () => { createSettingsWindow(); });
   ipcMain.handle('pb:quit', () => { app.isQuitting = true; app.quit(); });
   ipcMain.handle('pb:fetch-icon', async (_e, { id, site }) => {
@@ -1044,6 +1100,8 @@ async function boot() {
   if (process.argv.includes('--settings')) createSettingsWindow();
   if (!argvHidden && !settings.system.startHidden) showPet(false);
   else updateVisibility();
+
+  setupUpdater();
 
   setInterval(watchdogTick, 2500);
   watchdogTick();
