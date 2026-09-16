@@ -204,6 +204,7 @@
     <div class="row"><label>无应用时退出</label><input type="checkbox" id="quitWhenNoApp" title="彻底退出进程(配合开机自启使用)"></div>
     <div class="row"><label>隐藏延迟(秒)</label><input type="number" id="hideDelaySec" min="0" max="600" style="max-width:90px" title="最后一个应用关闭后,等待多少秒再隐藏"></div>
     <div class="row"><label>确认提示音</label><input type="checkbox" id="confirmSound" title="收到任务确认/完成/出错提示时播放音效"></div>
+    <div class="row"><label>系统通知</label><input type="checkbox" id="notifyEnabled" title="任务完成/出错/等待确认时弹 Windows 通知 —— 桌宠被窗口挡住或已隐藏时也能第一时间收到"></div>
     <div class="row"><label>确认卡超时(秒)</label><input type="number" id="confirmTimeoutSec" min="15" max="3600" style="max-width:90px" title="任务确认卡超过该秒数自动消失"></div>
     <div class="row"><label>无响应判定(秒)</label><input type="number" id="stallSec" min="0" max="3600" style="max-width:90px" title="运行中超过该秒数的2倍仍无任何事件,且应用进程已消失,才判定任务中断并提示(0=关闭;思考/重连期间的静默不算)"></div>
     <div class="row"><label>常驻显示</label><input type="checkbox" id="pinned" title="开启后桌宠常驻屏幕,不会因无应用运行而自动隐藏"></div>
@@ -268,6 +269,7 @@
       </div>
     <div class="row"><label>启动时隐藏</label><input type="checkbox" id="startHidden" title="开机后桌宠先隐藏,有应用运行时才出现"></div>
     <div class="row"><label>数据目录</label><button class="act ghost" id="open-data" title="配置、形象与日志都在这里">打开 ~/.petbuddy</button></div>
+    <div class="row"><label>全局快捷键</label><span style="color:#8b93a5;font-size:12px">Ctrl+Alt+P 唤起桌宠 · Ctrl+Alt+O 打开设置</span></div>
     <div class="row"><label><span class="tip wide" data-tip="打包版才可用：从 Release 的 latest.yml 检查新版本，下载完成后重启生效。开发模式会提示不支持。">检查更新</span></label><button class="act ghost" id="check-update" title="检查是否有新版本（仅打包版）">检查更新</button></div>
   </section>
 
@@ -348,6 +350,7 @@ function loadIntoUi() {
   $('#quitWhenNoApp').checked = cfg.behavior.quitWhenNoApp;
   $('#hideDelaySec').value = cfg.behavior.hideDelaySec;
   $('#confirmSound').checked = cfg.behavior.confirmSound;
+  $('#notifyEnabled').checked = cfg.behavior.notifyEnabled !== false;
   $('#confirmTimeoutSec').value = cfg.behavior.confirmTimeoutSec;
   $('#stallSec').value = cfg.behavior.stallSec !== undefined ? cfg.behavior.stallSec : 180;
   $('#restRemindEnabled').checked = !!cfg.behavior.restRemindEnabled;
@@ -563,6 +566,7 @@ function collectPatch() {
   cfg.behavior.quitWhenNoApp = $('#quitWhenNoApp').checked;
   cfg.behavior.hideDelaySec = parseInt($('#hideDelaySec').value || '10', 10);
   cfg.behavior.confirmSound = $('#confirmSound').checked;
+  cfg.behavior.notifyEnabled = $('#notifyEnabled').checked;
   cfg.behavior.confirmTimeoutSec = parseInt($('#confirmTimeoutSec').value || '300', 10);
   cfg.behavior.stallSec = parseInt($('#stallSec').value || '180', 10);
   cfg.behavior.restRemindEnabled = $('#restRemindEnabled').checked;

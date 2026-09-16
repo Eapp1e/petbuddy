@@ -51,6 +51,8 @@
   .confirm-item .ok { background: #2e9e5b; } .confirm-item .no { background: #c0483f; }
   .confirm-item .skip { background: #555c; flex: .6; }
     /* 提问卡：自由文本输入 + 快捷选项 */
+  .p-row.clickable { cursor: pointer; }
+  .p-row.clickable:hover { background: rgba(120,180,255,.10); }
   .confirm-item .c-input {
     width: 100%; margin-top: 6px; padding: 6px 8px;
     background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18);
@@ -807,6 +809,22 @@ setInterval(() => {
   el.textContent = ` · ${fmtElapsed(Date.now() - bubbleElapsedFrom)}`;
 }, 1000);
 
+function flashTip(text) {
+  let el = document.getElementById('tip-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'tip-toast';
+    el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:12px;'
+      + 'background:rgba(20,22,30,.92);color:#dde;font-size:12px;padding:6px 12px;'
+      + 'border-radius:8px;border:1px solid rgba(255,255,255,.14);z-index:99;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.display = '';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 2600);
+}
+
 function fmtTok(n) {
   if (!n) return '';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
@@ -836,7 +854,12 @@ function renderPanel(snap) {
       ? (todos.length && curTodo ? curTodo.content : (app.title || app.detail || ''))
       : (app.title || '');
     const elapsed = app.state === 'working' && app.startedAt ? ` · ${fmtElapsed(Date.now() - app.startedAt)}` : '';
-    row.className = 'p-row' + (todos.length ? ' wrap' : '');
+    row.className = 'p-row' + (todos.length ? ' wrap' : '') + ' clickable';
+    row.title = row.title || '点击跳到该应用窗口';
+    row.onclick = async () => {
+      const r = await window.petbuddy.focusApp(app.id).catch(() => ({ ok: false }));
+      if (!r || !r.ok) flashTip('找不到 ' + app.name + ' 的窗口');
+    };
     row.innerHTML =
       `<div class="p-ico">${app.icon ? `<img src="${app.icon}">` : app.emoji}</div>
        <div class="p-main"><div class="p-name">${app.name}</div><div class="p-sub"></div></div>

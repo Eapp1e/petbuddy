@@ -2,9 +2,10 @@
 # Exit codes: 0 sent, 2 window not found, 3 process not found, 4 bad usage.
 param(
   [Parameter(Mandatory = $true)][string]$Process,
-  [Parameter(Mandatory = $true)][string]$Keys,
+  [Parameter(Mandatory = $false)][string]$Keys = '',
   [int]$DelayMs = 160,
-  [string]$TitleMatch = ''
+  [string]$TitleMatch = '',
+  [switch]$FocusOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,6 +33,8 @@ $h = $target.MainWindowHandle
 if ([PetBuddy.Win32]::IsIconic($h)) { [PetBuddy.Win32]::ShowWindow($h, 9) | Out-Null } # SW_RESTORE
 [PetBuddy.Win32]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds $DelayMs
+
+if ($FocusOnly) { Write-Output "FOCUSED"; exit 0 }
 
 foreach ($k in ($Keys -split '~~')) {
   if ($k -eq '') { continue }

@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS = {
     autoHideWhenNoApp: true, // hide pet while none of the four apps is running
     quitWhenNoApp: false,    // fully quit instead of hiding (checked with delay)
     confirmSound: true,
+    notifyEnabled: true,      // Windows 系统通知：完成/出错/待确认
     focusTargetOnApprove: true, // bring target app to front before sending keys
     hideDelaySec: 10,         // grace period after last app closes
     confirmTimeoutSec: 300,   // pending confirm cards expire

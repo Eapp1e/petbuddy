@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell, Notification, globalShortcut } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -15,6 +15,7 @@ const { pollApps } = require('./lib/watchdog');
 const { sendKeysToApp, focusTarget, keySequences, answerSequence } = require('./lib/confirm');
 const taskTimer = require('./lib/tasktimer');
 const tokenstats = require('./lib/tokenstats');
+const { shouldNotify, buildNotification } = require('./lib/notify');
 
 const VERSION = require('../package.json').version;
 const ASSETS = path.join(__dirname, 'assets');
@@ -73,6 +74,39 @@ process.on('unhandledRejection', (e) => log('unhandledRejection', (e && e.stack)
 // Windows 上透明小窗口对 GPU 驱动很敏感（驱动异常时整个渲染进程会被杀，表现为
 // 桌宠不显示 / 设置窗口全黑）。桌宠面积很小，走软件渲染更稳，避免这类白屏。
 app.disableHardwareAcceleration();
+
+// ------------------------------------------------------------ notify -------
+/** 系统通知：桌宠被窗口挡住 / 隐藏时，任务完成与出错也能第一时间知道 */
+function notifyState(s, prev) {
+  if (!shouldNotify(prev, s.state)) return;
+  if (settings.behavior.notifyEnabled === false) return;
+  try {
+    if (!Notification.isSupported()) return;
+    const { title, body } = buildNotification(s.meta, s.state, {
+      id: s.id, title: s.title, detail: s.detail,
+      startedAt: s.state === 'done' ? s.startedAt : 0,
+      todos: s.todos,
+    });
+    const n = new Notification({ title, body, silent: !!settings.behavior.confirmSound });
+    n.on('click', () => { showPet(true); });
+    n.show();
+    log('notify', s.id, s.state, title);
+  } catch (e) {
+    log('notify failed', String((e && e.message) || e));
+  }
+}
+
+// ----------------------------------------------------------- shortcuts ----
+function setupShortcuts() {
+  const reg = (accel, fn) => {
+    try { globalShortcut.register(accel, fn); }
+    catch (e) { log('shortcut failed', accel, String((e && e.message) || e)); }
+  };
+  reg('Control+Alt+P', () => { showPet(true); });
+  reg('Control+Alt+O', () => { createSettingsWindow(); });
+  app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch {} });
+  log('shortcuts armed: Ctrl+Alt+P 唤起桌宠 / Ctrl+Alt+O 打开设置');
+}
 
 // --------------------------------------------------------------- updater ---
 // 自动更新：只在打包版启用（开发模式没有 app-update.yml）。
@@ -301,7 +335,10 @@ function setAppState(id, patch) {
   if (!s) return;
   const before = s.state;
   Object.assign(s, patch, { lastTs: Date.now() });
-  if (patch.state && patch.state !== before) s.since = Date.now();
+  if (patch.state && patch.state !== before) {
+    s.since = Date.now();
+    notifyState(s, before);
+  }
 }
 
 /** Dismiss pending confirms for an app (the user answered inside the app). */
@@ -804,6 +841,12 @@ function setupIpc() {
       return { ok: false, error: String((e && e.message) || e) };
     }
   });
+  ipcMain.handle('pb:focus-app', async (_e, id) => {
+    const proc = focusTarget(id);
+    if (!proc) return { ok: false, error: '该应用没有配置进程名' };
+    const r = await sendKeysToApp(proc, '', 60, true);   // 只聚焦，不发按键
+    return { ok: !!r.sent, error: r.error };
+  });
   ipcMain.handle('pb:open-settings', () => { createSettingsWindow(); });
   ipcMain.handle('pb:quit', () => { app.isQuitting = true; app.quit(); });
   ipcMain.handle('pb:fetch-icon', async (_e, { id, site }) => {
@@ -1058,11 +1101,14 @@ function resizePetWindow() {
   const [x, y] = petWindow.getPosition();
   const [ow, oh] = petWindow.getSize();
   if (ow === w && oh === h) return;
-  petWindow.setBounds({
-    x: Math.round(x + (ow - w) / 2),
-    y: y + (oh - h),
-    width: w, height: h,
-  });
+  // 面板/气泡变高时窗口向上长，但位置可能被推到屏幕外（甚至整只桌宠看不见）。
+  // 这里把窗口钳制回工作区内：水平留边、底边不得越界，顶边最多超出屏幕 1/3。
+  const disp = screen.getDisplayNearestPoint({ x: Math.round(x + ow / 2), y: Math.round(y + oh / 2) });
+  const wa = disp.workArea;
+  const clampX = Math.max(wa.x + 8, Math.min(Math.round(x + (ow - w) / 2), wa.x + wa.width - w - 8));
+  const maxTop = wa.y - Math.round(h / 3);
+  const clampY = Math.max(maxTop, Math.min(y + (oh - h), wa.y + wa.height - h - 8));
+  petWindow.setBounds({ x: clampX, y: clampY, width: w, height: h });
   // keep the saved spot in sync with the resized window
   const [nx, ny] = petWindow.getPosition();
   settings.window = { x: nx, y: ny };
@@ -1102,6 +1148,7 @@ async function boot() {
   else updateVisibility();
 
   setupUpdater();
+  setupShortcuts();
 
   setInterval(watchdogTick, 2500);
   watchdogTick();

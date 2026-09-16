@@ -10,15 +10,17 @@ const FOCUS_SEND_PS1 = path.join(__dirname, '..', '..', 'bridge', 'focus-send.ps
  * seq format: SendKeys tokens separated by `~~`, e.g. "1~~{ENTER}".
  * Returns { sent, code, error }.
  */
-function sendKeysToApp(processName, seq, delayMs = 160) {
+function sendKeysToApp(processName, seq, delayMs = 160, focusOnly = false) {
   return new Promise((resolve) => {
-    if (!processName || !seq) return resolve({ sent: false, error: 'no target or keys' });
+    if (!processName) return resolve({ sent: false, error: 'no target' });
+    if (!focusOnly && !seq) return resolve({ sent: false, error: 'no keys' });
     const args = [
       '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', FOCUS_SEND_PS1,
       '-Process', processName,
-      '-Keys', seq,
       '-DelayMs', String(delayMs),
     ];
+    if (focusOnly) args.push('-FocusOnly');
+    else args.push('-Keys', seq);
     const child = spawn('powershell.exe', args, { windowsHide: true });
     let err = '';
     child.stderr.on('data', (c) => { err += c; });
