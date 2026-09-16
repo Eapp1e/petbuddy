@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('petbuddy', {
   dragBy: (dx, dy) => ipcRenderer.invoke('pb:drag-by', { dx, dy }),
   dragEnd: () => ipcRenderer.invoke('pb:drag-end'),
   rescanApps: () => ipcRenderer.invoke('pb:rescan-apps'),
+  scanApps: () => ipcRenderer.invoke('pb:scan-apps'),
   addApp: (entry) => ipcRenderer.invoke('pb:add-app', entry),
   updateApp: (id, patch) => ipcRenderer.invoke('pb:update-app', { id, patch }),
   deleteApp: (id) => ipcRenderer.invoke('pb:delete-app', id),

@@ -958,10 +958,19 @@ function setupIpc() {
     }
     updateVisibility();
     broadcast();
-    // 顺便把"本机装过、但还没加进桌宠"的应用一并返回，让设置页能直接一键添加
-    let detected = [];
-    try { detected = detect.detect(apps.allApps().map((a) => a.id)); } catch (e) { log('detect failed', String(e.message || e)); }
-    return { ok: true, count: apps.allApps().length, detected };
+    return { ok: true, count: apps.allApps().length };
+  });
+  // 探测"本机装过、还没加进桌宠"的应用。刻意做成独立动作：
+  // 只有用户点「扫描应用」时才执行，不在每次刷新设置页时偷偷跑。
+  ipcMain.handle('pb:scan-apps', () => {
+    try {
+      const detected = detect.detect(apps.allApps().map((a) => a.id));
+      log('scan-apps', detected.length, 'candidates');
+      return { ok: true, detected };
+    } catch (e) {
+      log('detect failed', String((e && e.message) || e));
+      return { ok: false, error: String((e && e.message) || e), detected: [] };
+    }
   });
   ipcMain.handle('pb:add-app', (_e, entry) => {
     try {

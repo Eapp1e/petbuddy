@@ -70,7 +70,9 @@
     letter-spacing: 0; box-shadow: 0 10px 26px rgba(0,0,0,.65); display: none; pointer-events: none; }
   .tip.wide > .tip-b { max-width: 330px; }
   #detected-box { margin: 10px 0 14px; padding: 10px 12px; border: 1px solid #ffffff14; border-radius: 10px; background: #101219; }
-  #detected-box .d-title { font-size: 12px; color: #99a; margin-bottom: 4px; }
+  #detected-box .d-head { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 2px; }
+  #detected-box .d-close { padding: 2px 8px; font-size: 12px; line-height: 1; }
+  #detected-box .d-ico img { width: 16px; height: 16px; border-radius: 4px; vertical-align: middle; }
   .d-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #ffffff0d; }
   .d-row:first-of-type { border-top: 0; }
   .d-row .d-ico { width: 20px; text-align: center; font-size: 13px; flex-shrink: 0; }
@@ -97,7 +99,11 @@
   .edit-panel .frow label { width: 92px; color: #99a; font-size: 12px; flex-shrink: 0; }
   .app-head .act.on { background: #ffffff24; color: #9db9ff; box-shadow: inset 0 0 0 1px #ffffff26; }
   .app-head .del:hover { border-color: #c0483f88; color: #ff9d94; }
-  .app-head .ord { padding: 4px 7px; line-height: 1; }
+  .drag-handle { cursor: grab; color: #5c6472; padding: 0 5px; font-size: 13px; user-select: none; }
+  .drag-handle:active { cursor: grabbing; }
+  .app-card.dragging { opacity: .45; }
+  .app-card.drop-before { box-shadow: 0 -2px 0 0 #57d9b5; }
+  .app-card.drop-after { box-shadow: 0 2px 0 0 #57d9b5; }
   .pd-card { background: #14161d; border: 1px solid #ffffff12; border-radius: 12px;
     padding: 12px 14px; margin-top: 12px; }
   .pd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -228,20 +234,20 @@
       <div class="intro-main">让桌宠显示某个应用的
         <span class="tip wide" data-tip="「安装接入」＝往该应用的配置文件里写入钩子：它每做一个动作（开始处理、调用工具、等待确认、结束）都会执行一次 pet-bridge.cmd，把状态通过本地 HTTP 发给桌宠。桌宠不开外网，只在 127.0.0.1 上监听。">任务状态</span>，分三步：</div>
       <ol class="howto">
-        <li>点下方「<b>➕ 添加应用</b>」，只填 <b>应用 ID</b> 和 <b>显示名称</b>，保存。</li>
+        <li>点下方「<b>添加应用</b>」，只填 <b>应用 ID</b> 和 <b>显示名称</b>，保存。</li>
         <li>在下面这个应用的卡片上点「<b>安装接入</b>」——钩子会自动写好，不用手动改配置。</li>
         <li>重启一次那个应用（或新开一个会话），它一开始干活，桌宠就会亮起状态。</li>
       </ol>
       <div class="kv">
         <span class="kv-i"><span class="tip" data-tip="桌宠的本地 HTTP 服务端口。你也可以让应用直接 POST http://127.0.0.1:<端口>/api/event 上报状态（不用装钩子）。">API 端口</span> <b id="port"></b></span>
         <span class="kv-i"><span class="tip wide" data-tip="在桌宠上点「允许 / 拒绝」时发给该应用窗口的按键。{ENTER}＝回车、{ESC}＝Esc；用 ~~ 分隔多步，例如 1~~{ENTER}＝先按 1 再回车。">按键示例</span> <code>{ENTER}</code><code>1~~{ENTER}</code><code>{ESC}</code></span>
-        <span class="kv-i"><span class="tip wide" data-tip="高级用法：直接编辑这个文件（每个应用的 ID、颜色、按键、接入方式都在里面），保存后回这里点「重新扫描应用」。">配置文件</span> <code>~/.petbuddy/apps.config.json</code></span>
+        <span class="kv-i"><span class="tip wide" data-tip="高级用法：直接编辑这个文件（每个应用的 ID、颜色、按键、接入方式都在里面），保存后回这里点「扫描应用」。">配置文件</span> <code>~/.petbuddy/apps.config.json</code></span>
       </div>
-      <div class="intro-note">WorkBuddy / ZCode / Codex / DSH 已经预置好了，直接点它们的「安装接入」即可；<span class="tip wide" data-tip="镜像模式：不装钩子，应用自己上报状态。适合自己写脚本/插件、或钩子机制不兼容的应用 —— 只要往 /api/event 发一条 JSON 就会自动注册并出现在桌宠上。">没有钩子机制的应用</span>可以用镜像模式让它直接 <code>POST /api/event</code>。</div>
+      <div class="intro-note"><span class="tip wide" data-tip="镜像模式：不装钩子，应用自己上报状态。适合自己写脚本/插件、或钩子机制不兼容的应用 —— 只要往 /api/event 发一条 JSON 就会自动注册并出现在桌宠上。">没有钩子机制的应用</span>可以用镜像模式让它直接 <code>POST /api/event</code>。</div>
     </div>
     <div style="margin-top:8px">
-      <button class="act ghost" id="rescan" title="重新读取 apps.config.json。手动改过配置文件、或应用自动注册后想立刻看到，就点这里">🔄 重新扫描应用</button>
-      <button class="act" id="show-add" title="添加一个桌宠要跟踪的应用（填 ID 和名称即可，其余可留空）">➕ 添加应用</button>
+      <button class="act ghost" id="rescan" title="扫描本机装过、但还没加进桌宠的应用（同时重读配置文件）">扫描应用</button>
+      <button class="act" id="show-add" title="添加一个桌宠要跟踪的应用（填 ID 和名称即可，其余可留空）">添加应用</button>
     </div>
     <div id="add-form">
       <div class="sub" style="margin:0 0 8px">只填前两项就能用，其余留空即可；鼠标悬浮每一项都有说明。</div>
@@ -272,11 +278,11 @@
       </div>
     </div>
     <div id="detected-box" hidden>
-      <div class="d-title">扫描到本机装过、还没加进桌宠的应用 —— 点「添加」即可，接入方式已自动配好</div>
-      <div id="detected-list"></div>
-      <div class="frow" style="justify-content:flex-end">
-        <button class="act ghost" id="add-all-detected" title="把上面列出的应用全部添加（不会自动装钩子，添加后再点卡片上的安装接入）">全部添加</button>
+      <div class="d-head">
+        <button class="act ghost" id="add-all-detected" title="把列出的应用全部添加（不会自动装钩子，添加后再点卡片上的安装接入）">全部添加</button>
+        <button class="act ghost d-close" id="detected-close" title="收起">✕</button>
       </div>
+      <div id="detected-list"></div>
     </div>
     <div id="app-cards"></div>
   </section>
@@ -292,7 +298,6 @@
 
   <div id="save-bar">
     <span id="msg"></span>
-    <button class="act" id="save">保存</button>
   </div>
 </main>
 
@@ -313,7 +318,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('main section').forEach(x => x.classList.remove('active'));
   b.classList.add('active');
   $('#' + b.dataset.tab).classList.add('active');
-  $('#save-bar').style.display = b.dataset.tab === 'appearance' ? 'none' : 'flex';
+  // 设置项都是改完立即生效，不再需要底部保存栏
 });
 
 function bindRange(id, key) {
@@ -379,7 +384,6 @@ function loadIntoUi() {
   $('#startHidden').checked = cfg.system.startHidden;
 
   renderAppCards();
-  renderDetected();
 }
 
 /** 扫描到的可接入应用：一键添加（接入配置由主进程按目录自动补齐） */
@@ -495,6 +499,56 @@ async function loadPetdexSpriteOptions() {
   syncSpriteSelect();
 }
 
+// ---------------- 拖动排序 ----------------
+// 只有卡片左侧的手柄可拖；拖动到某张卡片的上半/下半决定插到它前面还是后面。
+// 顺序提交给主进程（settings.system.appOrder），桌宠面板/圆点/气泡轮播都跟着变。
+let draggingId = null;
+
+function bindDragReorder(card, id) {
+  const handle = card.querySelector('.drag-handle');
+  if (!handle) return;
+
+  handle.addEventListener('dragstart', (e) => {
+    draggingId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', id); } catch {}
+    try { e.dataTransfer.setDragImage(card, 24, 24); } catch {}
+    card.classList.add('dragging');
+  });
+
+  handle.addEventListener('dragend', () => {
+    draggingId = null;
+    document.querySelectorAll('.app-card').forEach((c) => {
+      c.classList.remove('dragging', 'drop-before', 'drop-after');
+    });
+  });
+
+  card.addEventListener('dragover', (e) => {
+    if (!draggingId || draggingId === id) return;
+    e.preventDefault();
+    const r = card.getBoundingClientRect();
+    const after = (e.clientY - r.top) > r.height / 2;
+    card.classList.toggle('drop-after', after);
+    card.classList.toggle('drop-before', !after);
+  });
+
+  card.addEventListener('dragleave', () => card.classList.remove('drop-before', 'drop-after'));
+
+  card.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    if (!draggingId || draggingId === id) return;
+    const after = card.classList.contains('drop-after');
+    const ids = metaList.map((m) => m.id).filter((x) => x !== draggingId);
+    const at = ids.indexOf(id) + (after ? 1 : 0);
+    ids.splice(at, 0, draggingId);
+    draggingId = null;
+    document.querySelectorAll('.app-card').forEach((c) => c.classList.remove('dragging', 'drop-before', 'drop-after'));
+    const r = await window.petbuddy.setAppOrder(ids);
+    if (!r.ok) flash('排序失败: ' + (r.error || ''));
+    await refreshStatus();
+  });
+}
+
 function renderAppCards() {
   const wrap = $('#app-cards');
   wrap.innerHTML = '';
@@ -519,7 +573,7 @@ function renderAppCards() {
         <button class="act ghost" data-a="edit" title="修改这个应用:显示名称、圆点颜色、图标、进程名、探测端口、确认按键">修改</button>
         <button class="act ghost" data-a="toggle" title="${enabled ? '临时忽略这个应用的事件,不影响已装的钩子' : '恢复接收这个应用的事件'}">${enabled ? '停用' : '启用'}</button>
         ${st.manual ? '' : `<button class="act" data-a="${st.installed ? 'uninstall' : 'install'}" title="${st.installed ? '移除写入该应用配置里的钩子(原始文件有备份)' : '自动把桌宠的钩子写进这个应用的配置文件,装完重启一次该应用'}">${st.installed ? '卸载接入' : '安装接入'}</button>`}
-        <button class="act ghost ord" data-a="up" title="在桌宠面板里上移">↑</button><button class="act ghost ord" data-a="down" title="下移">↓</button>
+        <span class="drag-handle" draggable="true" title="拖动调整在桌宠面板里的顺序">⠿</span>
         ${meta.deletable ? '<button class="act ghost del" data-a="del" title="只从桌宠的应用列表里删除,不会动该应用里的钩子">删除</button>' : ''}
       </div>
       <div class="edit-panel" hidden>
@@ -540,21 +594,15 @@ function renderAppCards() {
 
     // editBtn onclick moved below (combined handler)
     
-    const moveBy = async (delta) => {
-      const ids = metaList.map((m) => m.id);
-      const i = ids.indexOf(meta.id);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= ids.length) return;
-      const tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
-      const r = await window.petbuddy.setAppOrder(ids);
-      if (!r.ok) flash('排序失败: ' + (r.error || ''));
-      await refreshStatus();
-    };
-    card.querySelector('[data-a=up]').onclick = () => moveBy(-1);
-    card.querySelector('[data-a=down]').onclick = () => moveBy(1);
+    bindDragReorder(card, meta.id);
     card.querySelector('[data-a=toggle]').onclick = async () => {
       cfg.integrations.enabled[meta.id] = !enabled;
-      await save(); await refreshStatus();
+      // 只提交这一个开关，避免把整份配置回写（曾因此把别的应用误停用）
+      const r = await window.petbuddy.patchSettings({
+        integrations: { enabled: { [meta.id]: !enabled } },
+      }).catch(() => null);
+      if (!r || !r.ok) flash('切换失败: ' + ((r && r.error) || '未知错误'));
+      await refreshStatus();
     };
     const delBtn = card.querySelector('[data-a=del]');
     if (delBtn) delBtn.onclick = async () => {
@@ -672,13 +720,62 @@ function collectPatch() {
   return cfg;
 }
 
+// 每个字段 → 它在配置里的位置与类型。改哪个就只 patch 哪个，
+// 绝不整份回写（旧实现把整份 cfg 发回去，会把别处刚改的值覆盖掉 —— 这就是"点保存被重置"的原因）
+const FIELD_MAP = {
+  scale: ['appearance', 'scale', 'float'],
+  opacity: ['appearance', 'opacity', 'float'],
+  animSpeed: ['appearance', 'animationSpeed', 'float'],
+  bgSpeed: ['appearance', 'bgSpeed', 'float'],
+  ringStyle: ['appearance', 'ringStyle', 'str'],
+  customSpritePath: ['appearance', 'customSpritePath', 'str'],
+  alwaysOnTop: ['appearance', 'alwaysOnTop', 'bool'],
+  bubbleEnabled: ['appearance', 'bubbleEnabled', 'bool'],
+  showRing: ['appearance', 'showRing', 'bool'],
+  showDots: ['appearance', 'showDots', 'bool'],
+  autoHideWhenNoApp: ['behavior', 'autoHideWhenNoApp', 'bool'],
+  quitWhenNoApp: ['behavior', 'quitWhenNoApp', 'bool'],
+  hideDelaySec: ['behavior', 'hideDelaySec', 'int'],
+  confirmSound: ['behavior', 'confirmSound', 'bool'],
+  notifyEnabled: ['behavior', 'notifyEnabled', 'bool'],
+  confirmTimeoutSec: ['behavior', 'confirmTimeoutSec', 'int'],
+  stallSec: ['behavior', 'stallSec', 'int'],
+  restRemindEnabled: ['behavior', 'restRemindEnabled', 'bool'],
+  restRemindMin: ['behavior', 'restRemindMin', 'int'],
+  restSnoozeMin: ['behavior', 'restSnoozeMin', 'int'],
+  startHidden: ['system', 'startHidden', 'bool'],
+  autoStart: ['system', 'autoStart', 'autostart'],
+};
+
+document.querySelector('main').addEventListener('change', async (e) => {
+  const el = e.target;
+  const spec = FIELD_MAP[el.id];
+  if (!spec || el.closest('#add-form') || el.closest('.app-card')) return;
+  if (typeof el.onchange === 'function') return; // 已有专门处理器的字段交给它们
+  const [section, key, type] = spec;
+  let val = (el.type === 'checkbox') ? el.checked : el.value;
+  if (type === 'float') val = parseFloat(val);
+  else if (type === 'int') val = parseInt(val || '0', 10);
+  cfg[section] = cfg[section] || {};
+  cfg[section][key] = val;
+  if (type === 'autostart') {
+    await window.petbuddy.setAutostart(!!val);
+    autostartNow = !!val;
+  } else {
+    await window.petbuddy.patchSettings({ [section]: { [key]: val } });
+  }
+  flash('已保存');
+});
+
 async function save() {
   collectPatch();
-  await window.petbuddy.patchSettings(cfg);
-  if ($('#autoStart').checked !== autostartNow) {
-    await window.petbuddy.setAutostart($('#autoStart').checked);
-    autostartNow = $('#autoStart').checked;
-  }
+  // 兜底路径：只回写设置页自己负责的三段，绝不带上 integrations / appOrder
+  await window.petbuddy.patchSettings({
+    appearance: cfg.appearance,
+    behavior: cfg.behavior,
+    system: { startHidden: cfg.system.startHidden },
+    keys: cfg.keys,
+  });
   flash('已保存');
 }
 
@@ -690,8 +787,7 @@ function flash(t, ms = 2600) {
 }
 
 async function refreshStatus() {
-  const scan = await window.petbuddy.rescanApps().catch(() => null);
-  if (scan && Array.isArray(scan.detected)) detectedApps = scan.detected;
+  await window.petbuddy.rescanApps().catch(() => {});
   const snap = await window.petbuddy.getState();
   metaList = snap.apps.map((a) => ({
     id: a.id, name: a.name, emoji: a.emoji, icon: a.icon, color: a.color,
@@ -703,7 +799,32 @@ async function refreshStatus() {
   renderAppCards();
 }
 
-$('#rescan').onclick = async () => { await refreshStatus(); flash(`已重新扫描（可接入 ${detectedApps.length} 个未添加）`); };
+$('#rescan').onclick = async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = '扫描中…';
+  await refreshStatus();
+  const r = await window.petbuddy.scanApps().catch(() => null);
+  btn.disabled = false; btn.textContent = '扫描应用';
+  if (!r || !r.ok) { flash('扫描失败: ' + ((r && r.error) || '未知错误')); return; }
+  detectedApps = r.detected || [];
+  renderDetected();
+  flash(detectedApps.length ? `发现 ${detectedApps.length} 个还没添加的应用` : '没有发现新的可接入应用');
+  fetchDetectedIcons();
+};
+
+/** 扫描到的应用顺手抓一次官方图标（后台进行，抓到再刷新那一行） */
+async function fetchDetectedIcons() {
+  for (const d of detectedApps) {
+    if (d.icon || !d.site) continue;
+    const r = await window.petbuddy.fetchIcon(d.id, d.site).catch(() => null);
+    if (r && r.ok && r.path) {
+      d.icon = 'file:///' + String(r.path).replace(/\\/g, '/');
+      renderDetected();
+    }
+  }
+}
+
+$('#detected-close').onclick = () => { detectedApps = []; renderDetected(); };
 $('#add-all-detected').onclick = addAllDetected;
 
 // ---------------- petdex pet import ----------------
@@ -825,7 +946,7 @@ $('#petdex-delmode').onclick = () => {
 // ---------------- add-app form ----------------
 $('#show-add').onclick = () => {
   $('#add-form').classList.toggle('open');
-  $('#show-add').textContent = $('#add-form').classList.contains('open') ? '➖ 收起' : '➕ 添加应用';
+  $('#show-add').textContent = $('#add-form').classList.contains('open') ? '收起' : '添加应用';
 };
 $('#na-fetchicon').onclick = async () => {
   const id = $('#na-id').value.trim().toLowerCase();
@@ -840,7 +961,7 @@ $('#na-fetchicon').onclick = async () => {
 };
 $('#na-cancel').onclick = () => {
   $('#add-form').classList.remove('open');
-  $('#show-add').textContent = '➕ 添加应用';
+  $('#show-add').textContent = '添加应用';
 };
 $('#na-style').onchange = () => {
   $('#na-claude').style.display = $('#na-style').value === 'claude-file' ? '' : 'none';
