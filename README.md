@@ -54,7 +54,9 @@ npm run install-integrations
 - **点行跳转**：点任意一行，直接把该 Agent 的窗口切到前台，不用去任务栏翻
 - **拖动排序**：设置里拖动卡片即可调整顺序，面板与圆点同步
 
-<img src="docs/07-panel.png" width="55%" alt="任务面板">
+<p align="center">
+  <img src="docs/07-panel.png" width="55%" alt="任务面板">
+</p>
 
 ## 消息提示
 
@@ -96,7 +98,9 @@ npm run install-integrations
 
 **自动更新**：打包版启动 20 秒后会静默检查新版本，设置 → 系统里的"检查更新"也可以手动触发。更新源走 `package.json` 的 `build.publish`（当前指向 GitHub Release），因此**发版时要把 `latest.yml` 一起传到 Release 附件**（仓库里的 `.github/workflows/release.yml` 打 tag 时会自动带上）。
 
-<img src="docs/11-settings.png" width="55%" alt="设置窗口">
+<p align="center">
+  <img src="docs/11-settings.png" width="55%" alt="设置窗口">
+</p>
 
 ## 快速开始
 
