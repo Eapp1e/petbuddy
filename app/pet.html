@@ -889,9 +889,9 @@ function renderPanel(snap) {
     const tokTxt = tk && tk.out ? `  ${fmtTok(tk.out)} tokens` : '';
     row.querySelector('.p-sub').textContent = sub + tokTxt;
     if (tk && (tk.out || tk.ctx)) {
-      row.title = `今日生成 ${tk.out || 0} tokens`
-        + (tk.ctx ? ` · 上下文峰值 ${tk.ctx}` : '')
-        + (tk.cache ? ` · 其中缓存读取 ${tk.cache}` : '');
+      row.title = `今日生成 ${fmtTok(tk.out)} tokens`
+        + (tk.ctx ? ` · 上下文峰值 ${fmtTok(tk.ctx)}` : '')
+        + (tk.cache ? ` · 其中缓存读取 ${fmtTok(tk.cache)}` : '');
     }
     if (todos.length) {
       const list = document.createElement('div');

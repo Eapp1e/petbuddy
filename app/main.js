@@ -751,7 +751,11 @@ function createTray(iconPath) {
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 function autostartCmd() {
   const exe = process.execPath;
-  const dir = path.resolve(__dirname);
+  // 打包版：exe 本身就是应用，绝对不能再传目录参数（传了会被当成"要加载的应用路径"而报错）
+  if (app.isPackaged) return `"${exe}" --hidden`;
+  // 开发版：必须传仓库根（package.json 所在处），而不是 app/ 子目录 ——
+  // 写成 __dirname 会让开机自启报 "Cannot find module ...pp"
+  const dir = path.resolve(__dirname, '..');
   return `"${exe}" "${dir}" --hidden`;
 }
 function setAutoStart(enable) {
