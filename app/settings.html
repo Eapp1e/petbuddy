@@ -140,7 +140,12 @@
   #save-bar { position: fixed; bottom: 12px; left: 14px; right: auto; transform: none;
     z-index: 10; display: flex; align-items: center; justify-content: flex-start;
     pointer-events: none; background: transparent; border: 0; padding: 0;}
-  #msg { color: #7fd7a0; font-size: 12px; align-self: center; margin-right: auto; }
+  /* 左下角结果反馈：小胶囊，改完设置闪一下 */
+  #msg { color: #bfe9d0; background: #17251d; border: 1px solid #2e9e5b66;
+    border-radius: 8px; padding: 5px 11px; font-size: 11.5px; line-height: 1.4;
+    max-width: 60vw; opacity: 0; transform: translateY(4px);
+    transition: opacity .18s, transform .18s; }
+  #msg.show, #msg:not(:empty) { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
@@ -793,7 +798,7 @@ async function save() {
 }
 
 let msgTimer = null;
-function flash(t, ms = 2600) {
+function flash(t, ms = 3200) {
   const el = $('#msg');
   el.textContent = t;
   el.classList.add('show');
@@ -1057,7 +1062,8 @@ $('#pinned').onchange = async () => {
   loadIntoUi();
   await loadPetdexSpriteOptions();
   renderPetdexList();
-  $('#save-bar').style.display = 'none';
+  // 提示条常驻（透明、不挡点击、永不 display:none），改设置时在左下角闪出「已保存」
+  // 注意：这里绝不能写 $('#save-bar').style.display = 'none' —— 曾因此让所有反馈都看不见
 })();
 window.addEventListener('error', (e) => {
   window.petbuddy.logLine('settings error: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
