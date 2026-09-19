@@ -87,18 +87,20 @@ function zcodeConfigInstall() {
   cfg.hooks = cfg.hooks || {};
   cfg.hooks.enabled = true;
   cfg.hooks.events = cfg.hooks.events || {};
+  // 钩子一律走 ~/.petbuddy/pet-bridge.cmd 垫片（仓库挪窝只刷垫片，配置永不过期）。
+  // 用 cmd.exe /c 启动垫片：ZCode 的钩子是直接 spawn（无 shell），不能直接执行 .cmd。
+  // 每次安装都重写 petbuddy 条目（先删后加），旧格式的残留会被自然替换掉。
+  const shim = path.join(HOME, '.petbuddy', 'pet-bridge.cmd');
   for (const ev of PASCAL_EVENTS) {
-    const list = Array.isArray(cfg.hooks.events[ev]) ? cfg.hooks.events[ev] : [];
-    const has = list.some((e) => (e.hooks || []).some((h) => h.statusMessage === 'petbuddy'));
-    if (!has) {
-      list.push({
-        hooks: [{
-          type: 'process', command: node,
-          args: [BRIDGE, '--app', 'zcode', '--event', ev, '--spawn'],
-          timeoutMs: 4000, statusMessage: 'petbuddy',
-        }],
-      });
-    }
+    const list = (cfg.hooks.events[ev] || []).filter(
+      (e) => !((e.hooks || []).some((h) => h.statusMessage === 'petbuddy')));
+    list.push({
+      hooks: [{
+        type: 'process', command: 'cmd.exe',
+        args: ['/d', '/c', shim, '--app', 'zcode', '--event', ev, '--spawn'],
+        timeoutMs: 4000, statusMessage: 'petbuddy',
+      }],
+    });
     cfg.hooks.events[ev] = list;
   }
   writeJson(cfgPath, cfg);

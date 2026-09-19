@@ -127,3 +127,4 @@ test('自动探测：没有用量的目录不会误报', () => {
   const hits = ts.discoverSource('noopapp', { extraRoots: [dir] });
   assert.strictEqual(hits.length, 0);
 });
+

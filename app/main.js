@@ -213,7 +213,18 @@ let argvHidden = process.argv.includes('--hidden');
 
 const appStates = {};
 // rest reminder scheduling: first remind = boot + configured interval
-let lastRestShownAt = 0;
+let lastRestShownAt = Number((settings.behavior && settings.behavior.lastRestAt) || 0);
+
+/** 休息提醒的第二行：用相对时间，避免一个孤零零的 HH:MM 被看成"现在" */
+function restDetail() {
+  const prev = lastRestShownAt;
+  if (!prev) return '首次提醒';
+  const mins = Math.max(1, Math.round((Date.now() - prev) / 60000));
+  const hhmm = new Date(prev).toTimeString().slice(0, 5);
+  return mins < 60
+    ? `上次提醒：${mins} 分钟前（${hhmm}）`
+    : `上次提醒：${hhmm}`;
+}
 function restIntervalMs() { return Math.max(1, settings.behavior.restRemindMin || 45) * 60000; }
 let nextRemindAt = Date.now() + restIntervalMs();
 setInterval(() => {
@@ -223,7 +234,8 @@ setInterval(() => {
   for (const c of confirms.values()) if (c.rest) return;
   if (Date.now() < nextRemindAt) return;
   const id = `r${Date.now().toString(36)}`;
-  const last = lastRestShownAt ? `上次提醒: ${new Date(lastRestShownAt).toTimeString().slice(0, 5)}` : '首次提醒';
+  const prev = lastRestShownAt;
+  const last = restDetail();
   confirms.set(id, {
     id, app: 'rest', rest: true,
     question: '连续工作挺久了，休息一下吧 ~',
@@ -233,8 +245,12 @@ setInterval(() => {
     approveText: '知道了', denyText: `${Math.max(1, b.restSnoozeMin || 5)} 分钟后再提醒`,
   });
   lastRestShownAt = Date.now();
+  // 持久化：否则重启后又会显示"首次提醒"（看起来像时间算错了）
+  settings.behavior.lastRestAt = lastRestShownAt;
+  try { store.saveSettings(settings); } catch {}
   nextRemindAt = Date.now() + Math.max(1, b.restSnoozeMin) * 60000; // re-ask until acknowledged
-  log('rest reminder shown');
+  log('rest reminder shown at', new Date(lastRestShownAt).toTimeString().slice(0, 5),
+      '| prev =', prev ? new Date(prev).toTimeString().slice(0, 5) : '(无)');
   broadcast();
 }, 30000);
 function ensureState(app) {
@@ -450,10 +466,16 @@ function handleEvent(body) {
 
   // per-task tracking: every event belongs to a session (missing id -> '')
   let sid = String(body.sessionId || '');
+  let genericStart = 0; // 通用数据源读到的回合起点（没有专属解析器的应用用）
   if (!sid) {
     // no session id in the payload: adopt the app's newest record file so the
     // file-based timer and multi-task grouping still work (all apps)
-    const lt = taskTimer.latestTask(appId);
+    let lt = taskTimer.latestTask(appId);
+    if (!lt) {
+      // 没有专属解析的应用：用接入时自动探测到的数据源兜底（重启后计时不归零）
+      const g = taskTimer.latestTaskGeneric(tokenRootsFor(appId));
+      if (g) { lt = g; genericStart = g.startedAt || 0; }
+    }
     if (lt && lt.sessionId) sid = lt.sessionId;
   }
   if (!s.sessions) s.sessions = {};
@@ -466,6 +488,7 @@ function handleEvent(body) {
   // write lands a moment later and the next event corrects it)
   const realStart = taskTimer.turnStart(sid, ev === 'prompt' || ev === 'session-start');
   if (realStart && ev !== 'prompt') sess.startedAt = realStart;
+  else if (genericStart && ev !== 'prompt' && !sess.startedAt) sess.startedAt = genericStart;
 
   // the app is doing things again: its old pending confirms are stale
   if (!['permission', 'announce'].includes(ev)) clearConfirmsForApp(appId);
@@ -548,6 +571,7 @@ function handleEvent(body) {
     }
     case 'stop':
     case 'turn-complete': {
+      s.lastStopAt = Date.now();
       // the session that ended is done/error — the app only shows done when
       // no other session of the same app is still working (reconcile below)
       const failed = sess.errors > 0;
@@ -872,6 +896,30 @@ async function watchdogTick() {
           reconcileAppState(s);
           changed = true;
           log('dsh running (detected from its session file)', act.sessionId);
+        }
+      }
+      // file-based presence for zcode: its model-io journal is written
+      // continuously while a turn runs (thinking included) and goes quiet
+      // when the session is idle — same idea as the DSH block above
+      if (id === 'zcode' && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
+        const recentStop = s.lastStopAt && Date.now() - s.lastStopAt < 90 * 1000;
+        const act = recentStop ? null : taskTimer.zcodeActive(90 * 1000);
+        if (act) {
+          if (!s.running) { s.running = true; changed = true; }
+          const zz = s.sessions[act.sessionId];
+          if (!zz) {
+            s.sessions[act.sessionId] = {
+              state: 'working', title: '', detail: '', steps: 0, errors: 0,
+              lastTs: Date.now(), startedAt: act.startedAt || Date.now(),
+            };
+          } else {
+            zz.state = 'working';
+            zz.lastTs = Date.now();
+            if (act.startedAt) zz.startedAt = act.startedAt;
+          }
+          reconcileAppState(s);
+          changed = true;
+          log('zcode running (detected from its rollout journal)');
         }
       }
       if (!s.running && (s.state === 'working' || s.state === 'confirm')) {
@@ -1307,6 +1355,11 @@ async function boot() {
 
   setupUpdater();
   setupShortcuts();
+  // 开机重写 pet-bridge.cmd 垫片：它指向"当前仓库"的 pet-bridge.mjs，
+  // 仓库挪窝后所有 Agent 的钩子自动跟随，无需重装接入
+  import(pathToFileURL(path.join(__dirname, '..', 'integrations', 'shim.mjs')).href)
+    .then((m) => { m.writeBridgeShim(); log('bridge shim refreshed'); })
+    .catch((e) => log('shim refresh failed', String((e && e.message) || e)));
   // 启动后给"还没有用量来源"的应用各探测一次（错峰，避免卡启动）
   setTimeout(() => {
     for (const s of Object.values(appStates)) {

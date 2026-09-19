@@ -35,7 +35,8 @@ const DEFAULT_SETTINGS = {
     stallSec: 180,            // working with no events this long -> interrupted
     restRemindEnabled: false, // periodic break reminder (needs user ack)
     restRemindMin: 45,        // remind every N minutes
-    restSnoozeMin: 5,         // snooze minutes when deferred
+    restSnoozeMin: 5,
+    lastRestAt: 0,           // 上次弹出休息提醒的时间（持久化，重启后仍能算"上次提醒"）         // snooze minutes when deferred
   },
   integrations: {
     enabled: { zcode: true, codex: true, workbuddy: true, dsh: true },
