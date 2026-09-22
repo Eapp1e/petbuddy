@@ -84,7 +84,14 @@ function tokenRootsFor(id) {
   const saved = (sys.tokenSources && sys.tokenSources[id]) || [];
   const meta = (appStates[id] && appStates[id].meta) || {};
   const fromMeta = (meta.tokenRoots || []).map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean);
-  return saved.map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean).concat(fromMeta);
+  const out = saved.map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean).concat(fromMeta);
+  // 应用声明的 activity 日志目录 = 用量数据源的权威位置（数据驱动，对所有应用生效）
+  const def = apps.getApp(id);
+  for (const r of (def && def.activity && def.activity.roots) || []) {
+    const ex = tokenstats.expandPath(r);
+    if (ex && !out.includes(ex)) out.push(ex);
+  }
+  return out;
 }
 
 function saveTokenRoots(id, roots) {
@@ -902,10 +909,9 @@ async function watchdogTick() {
       // (built-in catalog or the user's apps.config.json) gets working/idle and
       // the runtime clock derived from its own journals — data-driven, no
       // per-app code needed (DSH above keeps its richer turn-state logic)
-      if (id !== 'dsh' && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
+      if (id !== 'dsh' && s.running && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
         const act = taskTimer.journalActivity(s.meta, 90 * 1000);
         if (act) {
-          if (!s.running) { s.running = true; changed = true; }
           const ss = s.sessions[act.sessionId];
           if (!ss) {
             s.sessions[act.sessionId] = {

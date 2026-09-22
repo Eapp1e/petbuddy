@@ -133,10 +133,13 @@ function sniffFile(fp) {
 
 function expandPath(p) {
   if (!p) return p;
-  return String(p)
-    .replace(/^~(?=$|[\\/])/, os.homedir())
-    .replace(/%APPDATA%/gi, process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'))
-    .replace(/%LOCALAPPDATA%/gi, process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'));
+  let out = String(p).replace(/^~(?=$|[\/])/, os.homedir());
+  // 展开 %任意环境变量%（未定义的保持原样）
+  out = out.replace(/%([^%]+)%/g, (m, name) => {
+    const v = process.env[name];
+    return v !== undefined ? v : m;
+  });
+  return out;
 }
 
 /** 猜这个应用可能把会话/日志放在哪 */
@@ -216,28 +219,38 @@ function num(v) { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 
 function dayStartMs() { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
 function dayKey() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
 
-function collectFiles(root, dayMs, out, depth = 0) {
+function collectFiles(root, dayMs, out, depth = 0, allFiles = false) {
   let items = [];
   try { items = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
   for (const it of items) {
     const fp = path.join(root, it.name);
     if (it.isDirectory()) {
-      if (depth < 4) collectFiles(fp, dayMs, out, depth + 1);
+      if (depth < 4) collectFiles(fp, dayMs, out, depth + 1, allFiles);
     } else if (it.name.endsWith('.jsonl') || it.name.endsWith('.json')) {
-      try { if (fs.statSync(fp).mtimeMs >= dayMs) out.push(fp); } catch {}
+      try {
+        // allFiles：累计式流水（单文件不断追加、mtime 停在最后使用日）不能按
+        // 文件日期过滤——条目自带时间戳，由 accumulateLine 按天归属
+        if (allFiles || fs.statSync(fp).mtimeMs >= dayMs) out.push(fp);
+      } catch {}
     }
   }
 }
 
 /** 解析单行，累加进 totals（按行时间戳过滤"今天"） */
-function accumulateLine(appId, line, totals, dayMs, state) {
+function accumulateLine(appId, line, totals, dayMs, state, activity) {
   if (!line || line.length < 20) return;
   let j;
   try { j = JSON.parse(line); } catch { return; }
 
+  // 通用时间戳探测：tsField（activity 声明）优先，再试各应用的常见字段
   let ts = 0;
-  if (typeof j.timestamp === 'string') ts = Date.parse(j.timestamp) || 0;
-  else if (typeof j.ts === 'number') ts = j.ts;
+  const tryTs = (v) => {
+    if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+    if (typeof v === 'string') { const t = Date.parse(v); return isNaN(t) ? 0 : t; }
+    return 0;
+  };
+  if (activity && activity.tsField) ts = tryTs(j[activity.tsField]);
+  if (!ts) ts = tryTs(j.timestamp) || tryTs(j.ts) || tryTs(j.startedAt) || tryTs(j.completedAt) || tryTs(j.updated_at);
   if (ts && ts < dayMs) return;
 
   // ZCode：response.usage（AI SDK 风格，字段大小写不定）
@@ -317,7 +330,33 @@ function scanDshJson(fp, dayMs) {
   return totals;
 }
 
-function scanFile(appId, fp, dayMs) {
+/** 深度遍历 JSON 树，把所有"用量节点"（含 input/output/cache token 字段的对象）
+ *  累加进 totals：out 累加、ctx 取峰值；命中用量节点后不再深入（避免重复计数）。 */
+function usageNodeOf(node) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return null;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  const inp = num(node.inputTokens ?? node.input_tokens ?? node.promptTokens ?? node.prompt_tokens ?? node.uncachedInputTokens);
+  const out = num(node.outputTokens ?? node.output_tokens ?? node.completionTokens ?? node.completion_tokens);
+  if (!inp && !out) return null;
+  const cac = num(node.cachedInputTokens ?? node.cached_input_tokens ?? node.cacheReadTokens ?? node.cache_read_input_tokens ?? node.cacheReadInputTokens);
+  return { inp, out, cac };
+}
+
+function walkUsage(node, totals, depth, seen) {
+  if (!node || typeof node !== 'object' || depth > 8 || seen.has(node)) return;
+  seen.add(node);
+  const u = usageNodeOf(node);
+  if (u) {
+    totals.out += u.out;
+    const ctx = u.inp + u.cac;
+    if (ctx > totals.ctx) { totals.ctx = ctx; totals.cache = u.cac; }
+    return;
+  }
+  if (Array.isArray(node)) { for (const v of node) walkUsage(v, totals, depth + 1, seen); return; }
+  for (const k of Object.keys(node)) walkUsage(node[k], totals, depth + 1, seen);
+}
+
+function scanFile(appId, fp, dayMs, activity) {
   let st;
   try { st = fs.statSync(fp); } catch { return null; }
   const key = `${st.size}:${Math.floor(st.mtimeMs)}`;
@@ -339,29 +378,38 @@ function scanFile(appId, fp, dayMs) {
 
   const totals = (offset > 0 && prev) ? { ...prev.totals } : zero();
   const state = {};
-  for (const line of text.split('\n')) accumulateLine(appId, line, totals, dayMs, state);
+  for (const line of text.split('\n')) accumulateLine(appId, line, totals, dayMs, state, activity);
   if (state.cumulative) {           // codex：文件内是累计值，直接采用（不求和）
     totals.out = state.cumulative.out;
     totals.ctx = state.cumulative.ctx;
     totals.cache = state.cumulative.cache;
+  }
+  // 整块 JSON 回退：缩进格式的会话状态文件（如 Cline）无法按行解析——
+  // 行级解析一无所获时，把整份 JSON 树里的 usage 节点全部累加
+  if (!totals.out && !totals.ctx && text.length < 8 * 1024 * 1024) {
+    try {
+      const obj = JSON.parse(text);
+      walkUsage(obj, totals, 0, new Set());
+    } catch {}
   }
   fileCache.set(fp, { key, size: st.size, day, totals });
   return totals;
 }
 
 /** 扫描某应用今天的 token 用量（带 TTL 缓存） */
-function scanApp(appId, extraRoots) {
+function scanApp(appId, extraRoots, activity) {
   const hit = appCache.get(appId);
   const now = Date.now();
   if (hit && now - hit.ts < APP_TTL) return hit.totals;
 
   const dayMs = dayStartMs();
+  const allFiles = !!(activity && activity.scanAllFiles);
   const files = [];
   const roots = (ROOTS[appId] || []).concat((extraRoots || []).map((r) => (typeof r === 'string' ? r : r && r.root)).filter(Boolean));
-  for (const root of roots) collectFiles(root, dayMs, files);
+  for (const root of roots) collectFiles(root, dayMs, files, 0, allFiles);
   const totals = zero();
   for (const fp of files) {
-    const t = appId === 'dsh' ? scanDshJson(fp, dayMs) : scanFile(appId, fp, dayMs);
+    const t = appId === 'dsh' ? scanDshJson(fp, dayMs) : scanFile(appId, fp, dayMs, activity);
     if (!t) continue;
     totals.out += t.out;                      // 生成量跨文件相加
     if (t.ctx > totals.ctx) {                 // 上下文取各文件最大值
@@ -381,7 +429,7 @@ function estimateCost(totals, prices) {
           num(totals.cacheRead) * p.cacheRead + num(totals.cacheWrite) * p.cacheWrite) / 1e6;
 }
 
-module.exports = {
+module.exports = { expandPath,
   scanApp, estimateCost, DEFAULT_PRICES, ROOTS,
   discoverSource, sniffFile, extractUsage, candidateRoots,
   // 测试用：直接对指定文件跑解析（生产代码不用）

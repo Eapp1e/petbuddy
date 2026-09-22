@@ -1,6 +1,6 @@
 {
   "name": "petbuddy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PetBuddy 🐾 — unified Windows desktop pet for ZCode / Codex / WorkBuddy / DSH: task status at a glance, approve permission requests right on the pet.",
   "main": "app/main.js",
   "type": "commonjs",
