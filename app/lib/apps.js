@@ -37,6 +37,8 @@ function normalizeEntry(raw) {
       deny: (raw.keys && raw.keys.deny) !== undefined ? raw.keys.deny : '',
     },
     integration: Array.isArray(raw.integration) ? raw.integration : [],
+    // 通用活动信号配置（tasktimer 据此判定运行状态与回合起点）
+    activity: raw.activity && typeof raw.activity === 'object' ? raw.activity : undefined,
     dynamic: !!raw.dynamic,
     user: !!raw.user,
     // 自动探测出来的用量数据源（接入应用时后台填上）
@@ -136,6 +138,15 @@ function reload() {
     const app = normalizeEntry(raw);
     if (app) upsert(app); // user entries override defaults with the same id
   }
+  // 升级合并：内置目录后来新增的 activity 配置，自动补充到已有条目——
+  // 老用户升级后无需重新接入即可获得运行检测（用户自己声明的 activity 优先）
+  try {
+    const { CATALOG } = require('./detect.js');
+    for (const c of CATALOG) {
+      const app = registry[c.id];
+      if (app && !app.activity && c.activity) app.activity = c.activity;
+    }
+  } catch {}
 }
 
 /**

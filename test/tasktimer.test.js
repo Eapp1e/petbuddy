@@ -30,3 +30,25 @@ test('计时器：zcode 回合起点 = 最近连续活动段（间隔 ≤ 3 分�
   assert.strictEqual(new Date(tsv).toISOString(), '2026-09-19T10:20:00.000Z',
     '连续段从最后一条往回走，10:20 与 10:01 间隔超过 3 分钟 → 起点=10:20 那条的 startedAt');
 });
+
+test('通用活动引擎：journal 配置驱动 presence / 回合起点 / 标题提取', () => {
+  const os2 = require('node:os');
+  const NL = String.fromCharCode(10);
+  const root = fs.mkdtempSync(path.join(os2.tmpdir(), 'pb-act-'));
+  const runDir = path.join(root, 'runs', '2026-09-20T22-37-40-587+08-00-x');
+  fs.mkdirSync(runDir, { recursive: true });
+  const mk = (t) => JSON.stringify({ ts: t, type: 'tool.requested', data: { tool_name: 'Bash', args: { command: 'echo hi' } } });
+  fs.writeFileSync(path.join(runDir, 'qodercli.log'), [
+    mk('2026-09-19T10:00:00+08:00'), mk('2026-09-19T10:01:00+08:00'),
+  ].join(NL), 'utf8');
+  const app = { id: 'demo', activity: {
+    roots: [root], glob: '**/qodercli.log', tsField: 'ts', gapMs: 600000,
+    journal: { typePath: 'type', typeValue: 'tool.requested', namePath: 'data.tool_name', detailPath: 'data.args.command' },
+  } };
+  const act = tt.journalActivity(app, 90 * 1000);
+  assert.ok(act, '应判定为活动（文件刚写入 ✓）');
+  assert.strictEqual(act.title, 'Bash');
+  assert.strictEqual(act.detail, 'echo hi');
+  assert.strictEqual(act.sessionId, 'activity:demo');
+  assert.ok(act.startedAt > 0, '回合起点应解析自 ts 字段');
+});

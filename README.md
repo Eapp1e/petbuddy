@@ -1,4 +1,4 @@
-<div align="center">
+<div align="center" style="text-align: center;">
   <img src="docs/icon.png" width="96" alt="PetBuddy">
 
 # PetBuddy
@@ -8,11 +8,7 @@
 把本机同时运行的多个 AI 编码 Agent 汇总到桌面上的一个窗口里：谁在工作、进行到哪一步、
 今天消耗了多少 Token、什么时候需要你回答，不必在多个窗口之间来回切换。
 
-![Framework](https://img.shields.io/badge/Electron-33-47848F)
-
-![Node.js](https://img.shields.io/badge/node.js-%E2%89%A518-339933)
-
-![License](https://img.shields.io/badge/license-MIT-green)
+![Electron](https://img.shields.io/badge/Electron-33-47848F) ![Node.js](https://img.shields.io/badge/node.js-%E2%89%A518-339933) ![License](https://img.shields.io/badge/license-MIT-green) ![AI Agent](https://img.shields.io/badge/AI_Agent-状态聚合-57d9b5) 
 
 <img src="docs/01-running.png" width="30%" alt="运行中"> <img src="docs/02-parallel.png" width="30%" alt="多任务并行"> <img src="docs/03-confirm.png" width="30%" alt="确认请求">
 
@@ -182,12 +178,16 @@ post-tool-failure / permission / question / stop / message / turn-complete / com
     "keys": { "approve": "{ENTER}", "deny": "{ESC}" },
     "integration": [
       { "style": "claude-file", "path": "~/.myapp/agent.json", "eventCase": "kebab", "standalone": true }
-    ]
+    ],
+    "activity": { "roots": ["~/.myapp/logs"], "glob": "**/*.jsonl", "tsField": "ts" }
   }]
 }
 ```
 
 `eventCase`：`pascal`（SessionStart）/ `kebab`（session-start）。改完点「扫描应用」。
+
+声明 `activity` 后，桌宠会持续读取这个应用的日志来判断它是否在工作、并计算用时——
+即使它不接入钩子（纯镜像应用）或桌宠中途重启，运行状态和用时都不会丢。
 新钩子格式在 `integrations/install.mjs` 的三个表里各加一个 handler 即可。
 
 ## 项目结构

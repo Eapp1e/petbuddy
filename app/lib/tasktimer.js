@@ -23,6 +23,9 @@ const ROOTS = [
 const CODEX_SESSIONS = path.join(os.homedir(), '.codex', 'sessions');
 // ZCode 的模型 I/O 流水：每条含 sessionId / startedAt / completedAt（ISO 或 ms）
 const ZCODE_ROLLOUT = path.join(os.homedir(), '.zcode', 'cli', 'rollout');
+// Qoder 的运行日志：logs/runs/<本地时间戳>-<runid>/qodercli.log，每个 agent 运行一个目录，
+// 干活时持续写入、空闲时不再有新 run——mtime 和目录名里的起始时间都是可靠信号
+const QODER_LOGS = path.join(os.homedir(), '.qoder', 'logs');
 // DeepSeek Harness (DSH) keeps a plain-JSON projection cache per session —
 // usable as a heartbeat even though its raw logs are zstd-compressed.
 const DSH_HOMES = [
@@ -379,4 +382,313 @@ function zcodeActive(freshMs = 90 * 1000) {
   return best;
 }
 
-module.exports = { turnStart, heartbeat, turnState, dshActive, latestTask, latestTaskGeneric, zcodeTurnStart, zcodeActive, userTsFromChunk };
+/** The most recently active qoder run (fresh within `freshMs`).
+ *  Qoder writes runs/<start-timestamp>/qodercli.log continuously while its
+ *  agent executes (thinking included) and stops creating runs when idle, so a
+ *  fresh run log is a reliable "agent is actually working" signal. startedAt
+ *  is the earliest run start within the contiguous burst (gap <= 10 min). */
+function qoderActive(freshMs = 90 * 1000) {
+  const now = Date.now();
+  const runsDir = path.join(QODER_LOGS, 'runs');
+  let dirs = [];
+  try { dirs = fs.readdirSync(runsDir); } catch { return null; }
+  const runs = [];
+  for (const d of dirs) {
+    const lp = path.join(runsDir, d, 'qodercli.log');
+    let st;
+    try { st = fs.statSync(lp); } catch { continue; }
+    if (now - st.mtimeMs > freshMs) continue;
+    const m = d.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})\+(\d{2})-(\d{2})/);
+    let start = st.mtimeMs;
+    if (m) {
+      const iso = m[1] + ' ' + m[2] + ':' + m[3] + ':' + m[4] + '.' + m[5] + ' +' + m[6] + ':' + m[7];
+      const v = Date.parse(iso);
+      if (!isNaN(v)) start = v;
+    }
+    runs.push({ start, mtime: st.mtimeMs });
+  }
+  if (!runs.length) return null;
+  runs.sort((a, b) => a.start - b.start);
+  let startedAt = runs[runs.length - 1].start;
+  for (let i = runs.length - 2; i >= 0; i--) {
+    if (runs[i + 1].start - runs[i].start > 10 * 60000) break;
+    startedAt = runs[i].start;
+  }
+  return { sessionId: 'qoder-runs', mtime: Math.max.apply(null, runs.map((r) => r.mtime)), startedAt };
+}
+
+// ------------------------------------------------ activity engine ---------
+// 应用在目录/配置里声明 activity 数据源后，计时与"正在运行"判定全部由这里
+// 数据驱动完成，不再需要为每个应用手写探测函数：
+//   activity: {
+//     roots:  ['~/.qoder/logs/sessions'],   // 活动记录目录（支持 ~ 与 %环境变量%）
+//     glob:   '**/*.jsonl',                 // 文件匹配（* 段内、** 跨层）
+//     freshMs: 90000,                       // 可选：文件多久内算"正在运行"
+//     gapMs:   600000,                      // 可选：活动点间隔超过此值算新回合
+//     tsField: 'ts',                        // 可选：从记录里取活动时间戳的字段
+//     journal: { typePath: 'type', typeValue: 'tool.requested',
+//                namePath: 'data.tool_name', detailPath: 'data.args.command' }, // 可选：标题/工具提取
+//   }
+function expandPath(p) {
+  let out = String(p);
+  if (out[0] === '~') out = path.join(os.homedir(), out.slice(1));
+  out = out.replace(/%([^%]+)%/g, (m, name) => (process.env[name] !== undefined ? process.env[name] : m));
+  return path.normalize(out);
+}
+
+/** 极简 glob：按段匹配，* 段内通配，** 跨任意层 */
+function globMatch(pattern, rel) {
+  // 支持 **（跨任意层，含零层）与 *（段内通配）；** 自带分隔符，避免多余斜杠
+  const segs = String(pattern).split(/[\\/]/).filter((x) => x !== '');
+  let re = '^';
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
+    if (seg === '**') { re += '(?:(?:.*)/)?'; continue; }
+    re += seg.replace(/[.+{}()[\]]/g, '\\$&').replace(/\*/g, '[^/]*');
+    if (i < segs.length - 1) re += '/';
+  }
+  re += '$';
+  try { return new RegExp(re, 'i').test(rel); } catch { return false; }
+}
+
+
+function get(obj, dotted) {
+  let cur = obj;
+  for (const k of String(dotted || '').split('.')) {
+    if (cur == null) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+}
+
+function journalFiles(cfg) {
+  const out = [];
+  const depth = Math.max(1, cfg.depth || 6);
+  for (const root of cfg.roots || []) {
+    const base = expandPath(root);
+    const walk = (dir, rel, level) => {
+      let items = [];
+      try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const it of items) {
+        const fp = path.join(dir, it.name);
+        const relPath = rel ? rel + '/' + it.name : it.name;
+        if (it.isDirectory()) {
+          if (level < depth) walk(fp, relPath, level + 1);
+          continue;
+        }
+        if (cfg.glob && !globMatch(cfg.glob, relPath)) continue;
+        try {
+          const st = fs.statSync(fp);
+          out.push({ fp, mtime: st.mtimeMs, size: st.size, rel: relPath });
+        } catch {}
+      }
+    };
+    walk(base, '', 1);
+  }
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+
+function parseTs(v) {
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+  if (typeof v === 'string') { const t = Date.parse(v); return isNaN(t) ? 0 : t; }
+  return 0;
+}
+
+/** 通用活动判定：命中 activity 配置的应用，"正在运行"与回合起点全部由此得出。
+ *  presence = 最新文件 mtime 在 freshMs 内；startedAt = 全部活动时间戳按 gapMs
+ *  分段后当前段最早的点（有 tsField 用记录里的时间，否则用文件 mtime）；
+ *  journal 配置存在时同时提取当前工具/命令作为标题与详情。 */
+function journalActivity(app, freshMs) {
+  const cfg = app && app.activity;
+  if (!cfg || !Array.isArray(cfg.roots) || !cfg.roots.length) return null;
+  const files = journalFiles(cfg);
+  if (!files.length) return null;
+  const now = Date.now();
+  const freshMs2 = cfg.freshMs || freshMs || 90 * 1000;
+  // presence 判定分两档：
+  //  - 配了 journal.presenceValues（"agent 真正在工作"的事件类型白名单）时，
+  //    以「最新一条白名单事件」的新鲜度为准——应用单纯开着也会写生命周期杂音
+  //    （session/hook/route 等），只看文件 mtime 会把"打开但没任务"误判成运行中 ✗
+  //  - 未配置时退回文件 mtime 新鲜度
+  const j0 = cfg.journal || {};
+  const presenceValues = Array.isArray(j0.presenceValues) ? j0.presenceValues : null;
+  if (presenceValues) {
+    const pf = cfg.presenceFreshMs || freshMs2;
+    let newestWorkTs = 0;
+    for (const f of files.slice(0, 4)) {
+      try {
+        const st = fs.statSync(f.fp);
+        const len = Math.min(st.size, 96 * 1024);
+        const fd = fs.openSync(f.fp, 'r');
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, st.size - len);
+        fs.closeSync(fd);
+        for (const l of buf.toString('utf8').split('\n').reverse()) {
+          const t = l.trim();
+          if (!t.startsWith('{')) continue;
+          let o;
+          try { o = JSON.parse(t); } catch { continue; }
+          if (presenceValues.includes(get(o, j0.typePath || 'type'))) {
+            newestWorkTs = Math.max(newestWorkTs, parseTs(get(o, cfg.tsField)) || st.mtimeMs);
+            break; // 该文件里最新一条白名单事件已找到
+          }
+        }
+        if (newestWorkTs) break;
+      } catch {}
+    }
+    if (!newestWorkTs || now - newestWorkTs > pf) return null;
+  } else if (now - files[0].mtime > freshMs2) {
+    return null;
+  }
+
+  // 活动时间点：优先记录内的 ts 字段（每文件读尾部），否则用文件 mtime
+  let points = [];
+  if (cfg.tsField) {
+    for (const f of files.slice(0, 12)) {
+      try {
+        const st = fs.statSync(f.fp);
+        const len = Math.min(st.size, 64 * 1024);
+        const fd = fs.openSync(f.fp, 'r');
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, st.size - len);
+        fs.closeSync(fd);
+        for (const l of buf.toString('utf8').split('\n')) {
+          const t = l.trim();
+          if (!t.startsWith('{')) continue;
+          let o;
+          try { o = JSON.parse(t); } catch { continue; }
+          const v = parseTs(get(o, cfg.tsField));
+          if (v > 0) points.push(v);
+        }
+      } catch {}
+    }
+  }
+  if (points.length < 2) points = files.map((f) => f.mtime);
+  points = points.slice().sort((a, b) => a - b);
+
+  const gap = cfg.gapMs || 10 * 60000;
+  let startedAt = points[points.length - 1];
+  for (let i = points.length - 2; i >= 0; i--) {
+    if (points[i + 1] - points[i] > gap) break;
+    startedAt = points[i];
+  }
+
+  // —— 会话状态文件（fileState）：最新匹配文件本身就是一份 JSON 会话快照 ——
+  // 声明 runningWhen（满足才算运行中）、startedAtPath（回合起点字段）、
+  // titleFromLastUserMessage（最后一条 user 消息文本 = 任务标题）即可，
+  // 无需了解该应用的事件流格式。messages/role/content/text 是各 Agent 的通用约定。
+  const st8 = cfg.fileState;
+  if (st8) {
+    try {
+      const raw = fs.readFileSync(files[0].fp, 'utf8');
+      const o = JSON.parse(raw);
+      if (st8.runningWhen) {
+        const v = get(o, st8.runningWhen.path);
+        if (String(v) !== String(st8.runningWhen.equals)) return null; // 会话未在运行 → 不提升
+      }
+      if (st8.startedAtPath) {
+        const v = parseTs(get(o, st8.startedAtPath));
+        if (v > 0) startedAt = v;
+      }
+      if (st8.titleFromLastUserMessage) {
+        let msgs = o.messages;
+        if (typeof msgs === 'string') { try { msgs = JSON.parse(msgs); } catch {} }
+        if (Array.isArray(msgs)) {
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const msg = msgs[i] || {};
+            if (String(get(msg, st8.rolePath || 'role')) !== (st8.roleValue || 'user')) continue;
+            let c = msg.content;
+            if (typeof c === 'string') { title = c; break; }
+            if (Array.isArray(c)) {
+              const t = c.find((x) => x && (x.type === 'text' || typeof x.text === 'string'));
+              if (t && typeof t.text === 'string') { title = t.text; break; }
+            }
+          }
+          if (title) {
+            title = title.replace(/^<[^>]+>/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+          }
+        }
+      }
+    } catch {}
+  }
+  // 标题/详情：最新文件尾部里最新一条匹配事件
+  let title = '', detail = '';
+  const j = cfg.journal;
+  // 任务标题：最新一条「用户提交任务」事件的文本（如 qoder 的 input.prompt.submitted）
+  if (j && j.prompt && j.prompt.typeValue) {
+    for (const f of files.slice(0, 6)) {
+      try {
+        const st = fs.statSync(f.fp);
+        const len = Math.min(st.size, 128 * 1024);
+        const fd = fs.openSync(f.fp, 'r');
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, st.size - len);
+        fs.closeSync(fd);
+        for (const l of buf.toString('utf8').split('\n').reverse()) {
+          const t = l.trim();
+          if (!t.startsWith('{')) continue;
+          let o;
+          try { o = JSON.parse(t); } catch { continue; }
+          if (get(o, j.prompt.typePath || 'type') !== j.prompt.typeValue) continue;
+          const v = get(o, j.prompt.textPath || 'data.text_preview');
+          if (v) title = String(v).replace(/\s+/g, ' ').slice(0, 120);
+          break;
+        }
+        if (title) break;
+      } catch {}
+    }
+  }
+  // 回合起点：最新一条 turn 开始事件的 ts（比按间隔分段更精确）
+  if (j && j.turnStart && j.turnStart.typeValue) {
+    for (const f of files.slice(0, 6)) {
+      try {
+        const st = fs.statSync(f.fp);
+        const len = Math.min(st.size, 128 * 1024);
+        const fd = fs.openSync(f.fp, 'r');
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, st.size - len);
+        fs.closeSync(fd);
+        for (const l of buf.toString('utf8').split('\n').reverse()) {
+          const t = l.trim();
+          if (!t.startsWith('{')) continue;
+          let o;
+          try { o = JSON.parse(t); } catch { continue; }
+          if (get(o, j.turnStart.typePath || 'type') !== j.turnStart.typeValue) continue;
+          const v = parseTs(get(o, cfg.tsField));
+          if (v > 0) startedAt = v;
+          break;
+        }
+        if (startedAt === points[0] || startedAt > 0) break;
+      } catch {}
+    }
+  }
+  if (j && j.typeValue) {
+    // 按新鲜度逐个文件尝试：活动信号文件（如 CLI 运行日志）未必是结构化的，
+    // 真正的事件记录可能在另一个匹配文件里
+    for (const f of files.slice(0, 6)) {
+      try {
+        const st = fs.statSync(f.fp);
+        const len = Math.min(st.size, 96 * 1024);
+        const fd = fs.openSync(f.fp, 'r');
+        const buf = Buffer.alloc(len);
+        fs.readSync(fd, buf, 0, len, st.size - len);
+        fs.closeSync(fd);
+        const lines = buf.toString('utf8').split('\n').reverse();
+        for (const l of lines) {
+          const t = l.trim();
+          if (!t.startsWith('{')) continue;
+          let o;
+          try { o = JSON.parse(t); } catch { continue; }
+          if (get(o, j.typePath || 'type') !== j.typeValue) continue;
+          title = String(get(o, j.namePath) || '').slice(0, 120);
+          detail = String(get(o, j.detailPath) || '').slice(0, 160);
+          break;
+        }
+        if (title) break;
+      } catch {}
+    }
+  }
+  return { sessionId: 'activity:' + app.id, mtime: files[0].mtime, startedAt, title, detail };
+}
+
+module.exports = { turnStart, heartbeat, turnState, dshActive, latestTask, latestTaskGeneric, zcodeTurnStart, zcodeActive, qoderActive, journalActivity, userTsFromChunk };

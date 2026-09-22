@@ -311,6 +311,7 @@ function workbuddyLegacyClean() {
 
 // ------------------------------------------------------------- dispatch ----
 const STYLE_INSTALL = {
+  'none': () => ({ skipped: true, reason: 'mirror mode' }),
   'zcode-config': () => zcodeConfigInstall(),
   'claude-file': (step, app) => claudeFileInstall(step, app),
   'codex-notify': () => codexNotifyInstall(),
@@ -318,6 +319,7 @@ const STYLE_INSTALL = {
   'workbuddy-legacy-clean': () => workbuddyLegacyClean(),
 };
 const STYLE_UNINSTALL = {
+  'none': () => ({ skipped: true, reason: 'mirror mode' }),
   'zcode-config': () => zcodeConfigUninstall(),
   'claude-file': (step, app) => claudeFileUninstall(step, app),
   'codex-notify': () => codexNotifyUninstall(),
@@ -325,6 +327,7 @@ const STYLE_UNINSTALL = {
   'workbuddy-legacy-clean': () => workbuddyLegacyClean(),
 };
 const STYLE_STATUS = {
+  'none': () => ({ installed: true, mirror: true, hint: '镜像模式' }),
   'zcode-config': () => zcodeConfigStatus(),
   'claude-file': (step, app) => claudeFileStatus(step, app),
   'codex-notify': () => codexNotifyStatus(),
@@ -335,10 +338,13 @@ const STYLE_STATUS = {
 export async function statusAll() {
   const out = {};
   for (const app of apps.allApps()) {
-    if (!(app.integration || []).length) {
+    const steps = app.integration || [];
+    // 镜像模式：没有 integration，或全部是 style:'none'——本来就是"免安装"的接入方式，
+    // 之前走到下面的循环里因没有 'none' 处理器而显示「未知样式 none / 未接入」✗
+    if (!steps.length || steps.every((st) => st && st.style === 'none')) {
       out[app.id] = {
-        installed: false, manual: true,
-        hint: '镜像模式:直接 POST /api/event 即可显示(app=' + app.id + ')',
+        installed: true, mirror: true,
+        hint: '镜像模式：应用向本地接口 POST /api/event 即可显示（无需写入钩子）',
         defaultApprove: app.keys.approve, defaultDeny: app.keys.deny,
       };
       continue;
@@ -366,9 +372,12 @@ export async function statusAll() {
 export async function installOne(appId) {
   const app = apps.getApp(appId);
   if (!app) throw new Error('unknown app: ' + appId);
-  if (!(app.integration || []).length) return { skipped: true, reason: 'mirror-only app' };
+  const steps = app.integration || [];
+  if (!steps.length || steps.every((st) => st && st.style === 'none')) {
+    return { skipped: true, reason: 'mirror-mode app' };
+  }
   const results = [];
-  for (const step of app.integration) {
+  for (const step of steps) {
     const fn = STYLE_INSTALL[step.style];
     if (fn) results.push(fn(step, app));
   }

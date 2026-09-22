@@ -31,6 +31,7 @@ module.exports = {
       ports: [],
       keys: { approve: '{ENTER}', deny: '{ESC}' },
       integration: [{ style: 'zcode-config' }],
+      activity: { roots: ['~/.zcode/cli/rollout'], glob: 'model-io-*.jsonl', tsField: 'startedAt', gapMs: 180000 },
     },
     {
       id: 'codex',

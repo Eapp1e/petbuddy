@@ -898,28 +898,31 @@ async function watchdogTick() {
           log('dsh running (detected from its session file)', act.sessionId);
         }
       }
-      // file-based presence for zcode: its model-io journal is written
-      // continuously while a turn runs (thinking included) and goes quiet
-      // when the session is idle — same idea as the DSH block above
-      if (id === 'zcode' && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
-        const recentStop = s.lastStopAt && Date.now() - s.lastStopAt < 90 * 1000;
-        const act = recentStop ? null : taskTimer.zcodeActive(90 * 1000);
+      // generic file-based presence: any app that declares an activity source
+      // (built-in catalog or the user's apps.config.json) gets working/idle and
+      // the runtime clock derived from its own journals — data-driven, no
+      // per-app code needed (DSH above keeps its richer turn-state logic)
+      if (id !== 'dsh' && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
+        const act = taskTimer.journalActivity(s.meta, 90 * 1000);
         if (act) {
           if (!s.running) { s.running = true; changed = true; }
-          const zz = s.sessions[act.sessionId];
-          if (!zz) {
+          const ss = s.sessions[act.sessionId];
+          if (!ss) {
             s.sessions[act.sessionId] = {
-              state: 'working', title: '', detail: '', steps: 0, errors: 0,
+              state: 'working', title: act.title || '', detail: act.detail || '', steps: 0, errors: 0,
               lastTs: Date.now(), startedAt: act.startedAt || Date.now(),
             };
           } else {
-            zz.state = 'working';
-            zz.lastTs = Date.now();
-            if (act.startedAt) zz.startedAt = act.startedAt;
+            ss.state = 'working';
+            ss.lastTs = Date.now();
+            if (act.startedAt) ss.startedAt = act.startedAt;
+            if (act.title) ss.title = act.title;
+            if (act.detail) ss.detail = act.detail;
           }
+          s.lastTs = Date.now(); // 活动信号新鲜，stall 检查不与之冲突
           reconcileAppState(s);
           changed = true;
-          log('zcode running (detected from its rollout journal)');
+          log('activity presence (journal)', id);
         }
       }
       if (!s.running && (s.state === 'working' || s.state === 'confirm')) {
