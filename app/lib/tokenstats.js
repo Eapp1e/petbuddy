@@ -251,6 +251,7 @@ function accumulateLine(appId, line, totals, dayMs, state, activity) {
   };
   if (activity && activity.tsField) ts = tryTs(j[activity.tsField]);
   if (!ts) ts = tryTs(j.timestamp) || tryTs(j.ts) || tryTs(j.startedAt) || tryTs(j.completedAt) || tryTs(j.updated_at);
+  if (ts) state.sawTs = true;               // 该行带可解析时间戳 → 这是事件流文件
   if (ts && ts < dayMs) return;
 
   // ZCode：response.usage（AI SDK 风格，字段大小写不定）
@@ -385,8 +386,9 @@ function scanFile(appId, fp, dayMs, activity) {
     totals.cache = state.cumulative.cache;
   }
   // 整块 JSON 回退：缩进格式的会话状态文件（如 Cline）无法按行解析——
-  // 行级解析一无所获时，把整份 JSON 树里的 usage 节点全部累加
-  if (!totals.out && !totals.ctx && text.length < 8 * 1024 * 1024) {
+  // 仅当「行里从未出现过可解析时间戳」（真正的会话状态文件）且文件本身在
+  // 扫描窗口内有写入时才走此路径；事件流文件（带时间戳）的归属由行级过滤完成
+  if (!state.sawTs && !totals.out && !totals.ctx && st.mtimeMs >= dayMs && text.length < 8 * 1024 * 1024) {
     try {
       const obj = JSON.parse(text);
       walkUsage(obj, totals, 0, new Set());
