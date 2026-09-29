@@ -32,6 +32,13 @@ const DSH_HOMES = [
   process.env.DSH_HOME,
   path.join(os.homedir(), '.dsh'),
 ].filter(Boolean);
+
+// DSH 数据目录覆盖：由 main 在启动时从应用定义的 activity.roots 注入，
+// 使累计式扫描/回合判定不依赖可能过期的 DSH_HOME 环境变量
+let DSH_HOMES_OVERRIDE = null;
+function setDshHomes(list) {
+  DSH_HOMES_OVERRIDE = Array.isArray(list) && list.length ? list.map(expandPath) : null;
+}
 const TAIL_BYTES = 256 * 1024;
 const cache = new Map(); // sessionId -> { ts, key }
 
@@ -105,7 +112,7 @@ function candidates(sessionId) {
     }
   } catch {}
   // DeepSeek Harness: projcache JSON is written continuously while a turn runs
-  for (const home of DSH_HOMES) {
+  for (const home of (DSH_HOMES_OVERRIDE && DSH_HOMES_OVERRIDE.length ? DSH_HOMES_OVERRIDE : DSH_HOMES)) {
     for (const name of [sessionId + '.json', 'session-' + sessionId + '.json']) {
       const fp = path.join(home, 'storages', 'session_projcache', 'sessions', name);
       try {
@@ -297,9 +304,9 @@ function latestTaskGeneric(roots, freshMs = 15 * 60000) {
  *  429) — far more accurate than any silence heuristic, and it never
  *  misfires during long thinking because the turn stays open then.
  *  Returns 'busy' | 'idle' | 'unknown'. */
-function turnState(sessionId) {
+function turnState(sessionId, homes) {
   if (!sessionId) return 'unknown';
-  for (const home of DSH_HOMES) {
+  for (const home of (DSH_HOMES_OVERRIDE && DSH_HOMES_OVERRIDE.length ? DSH_HOMES_OVERRIDE : DSH_HOMES)) {
     for (const name of [sessionId + '.json', 'session-' + sessionId + '.json']) {
       const fp = path.join(home, 'storages', 'session_projcache', 'sessions', name);
       let st;
@@ -330,10 +337,10 @@ function turnState(sessionId) {
 /** The most recently touched DSH session that still has an OPEN turn.
  *  File-based presence: DSH shows as running even when its hooks are silent
  *  (thinking / deep-search phases emit no tool events at all). */
-function dshActive(freshMs = 5 * 60000) {
+function dshActive(freshMs = 5 * 60000, homes) {
   const now = Date.now();
   let best = null;
-  for (const home of DSH_HOMES) {
+  for (const home of (DSH_HOMES_OVERRIDE && DSH_HOMES_OVERRIDE.length ? DSH_HOMES_OVERRIDE : DSH_HOMES)) {
     const dir = path.join(home, 'storages', 'session_projcache', 'sessions');
     let files = [];
     try { files = fs.readdirSync(dir); } catch { continue; }
@@ -344,16 +351,24 @@ function dshActive(freshMs = 5 * 60000) {
       try { st = fs.statSync(fp); } catch { continue; }
       if (now - st.mtimeMs > freshMs) continue;
       const sid = f.replace(/^session-/, '').replace(/\.json$/, '');
-      if (turnState(sid) !== 'busy') continue;
-      let title = '';
+      if (turnState(sid, homes) !== 'busy') continue;
+      let title = '', detail = '';
       try {
         const o = JSON.parse(fs.readFileSync(fp, 'utf8'));
         const rows = (o.record && o.record.rows) || {};
         const turns = (rows.turnOutline && rows.turnOutline.val && rows.turnOutline.val.turns) || [];
         const last = turns[turns.length - 1];
-        title = String((last && last.prompt) || '').replace(/\s+/g, ' ').slice(0, 100);
+        title = tidyTitle((last && last.prompt) || '', 100);
+        try {
+          const ss = rows.sessionStats && rows.sessionStats.val;
+          if (ss && ss.turns != null) detail = '回合 ' + ss.turns + (ss.steps != null ? ' · 已执行 ' + ss.steps + ' 步' : '');
+        } catch {}
+        try {
+          const cp = rows.contextPressure && rows.contextPressure.val;
+          if (cp && cp.surfaceTokens && cp.contextWindow) detail = (detail ? detail + ' · ' : '') + '上下文 ' + Math.round(cp.surfaceTokens / cp.contextWindow * 100) + '%';
+        } catch {}
       } catch {}
-      const cand = { sessionId: sid, mtime: st.mtimeMs, startedAt: projTurnStart(fp), title };
+      const cand = { sessionId: sid, mtime: st.mtimeMs, startedAt: projTurnStart(fp), title, detail };
       if (!best || cand.mtime > best.mtime) best = cand;
     }
   }
@@ -584,11 +599,22 @@ function journalActivity(app, freshMs) {
       const o = JSON.parse(raw);
       if (st8.runningWhen) {
         const v = get(o, st8.runningWhen.path);
-        if (String(v) !== String(st8.runningWhen.equals)) return null; // 会话未在运行 → 不提升
+        if (String(v) !== String(st8.runningWhen.equals)) {
+          const touched = Date.now() - files[0].mtime <= (cfg.freshMs || 180000);
+          if (v === undefined && st8.runningWhen.fallbackFresh && touched) {
+            // 无状态字段的文件（如 Cline 的 .messages.json）：新鲜即 Agent 活跃 → working
+          } else if (st8.appOpenState && touched) {
+            // 状态不是 running 但文件仍被守护进程触写：应用开着、Agent 没干活 → running
+            return { state: 'running', sessionId: sid, mtime: files[0].mtime };
+          } else {
+            return null;
+          }
+        }
       }
       if (st8.startedAtPath) {
         const v = parseTs(get(o, st8.startedAtPath));
         if (v > 0) startedAt = v;
+        else startedAt = files[0].birthtimeMs;   // 无起点字段：会话文件创建时间
       }
       if (st8.titleFromLastUserMessage) {
         let msgs = o.messages;
@@ -605,7 +631,7 @@ function journalActivity(app, freshMs) {
             }
           }
           if (title) {
-            title = title.replace(/^<[^>]+>/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
+            title = tidyTitle(title.replace(/^<[^>]+>/, ''));
           }
         }
       }
@@ -631,7 +657,7 @@ function journalActivity(app, freshMs) {
           try { o = JSON.parse(t); } catch { continue; }
           if (get(o, j.prompt.typePath || 'type') !== j.prompt.typeValue) continue;
           const v = get(o, j.prompt.textPath || 'data.text_preview');
-          if (v) title = String(v).replace(/\s+/g, ' ').slice(0, 120);
+          if (v) title = tidyTitle(v);
           break;
         }
         if (title) break;
@@ -680,7 +706,7 @@ function journalActivity(app, freshMs) {
           let o;
           try { o = JSON.parse(t); } catch { continue; }
           if (get(o, j.typePath || 'type') !== j.typeValue) continue;
-          title = String(get(o, j.namePath) || '').slice(0, 120);
+          title = tidyTitle(get(o, j.namePath) || '', 40);
           detail = String(get(o, j.detailPath) || '').slice(0, 160);
           break;
         }
@@ -691,4 +717,69 @@ function journalActivity(app, freshMs) {
   return { sessionId: 'activity:' + app.id, mtime: files[0].mtime, startedAt, title, detail };
 }
 
-module.exports = { turnStart, heartbeat, turnState, dshActive, latestTask, latestTaskGeneric, zcodeTurnStart, zcodeActive, qoderActive, journalActivity, userTsFromChunk };
+/** 任务标题整理：只取第一行、去多余空白、限长（整段用户原文没有信息量） */
+function tidyTitle(text, max) {
+  const first = String(text || '').split('\n').find((l) => l.trim());
+  return (first || '').replace(/\s+/g, ' ').trim().slice(0, max || 60);
+}
+
+
+/** 日志驱动的权限询问检测：扫描 roots 下最新文件，找未决的 permission.requested
+ *  （比对应 resolved 新）。返回 {state:'confirm', sessionId, question, options,
+ *  toolCallId, startedAt} 或 null。与 journalActivity 解耦，避免互相干扰。 */
+function detectJournalQuestion(perm, roots) {
+  const out = [];
+  for (const r of (roots || [])) {
+    const dir = expandPath(r);
+    if (!fs.existsSync(dir)) continue;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      const fp = path.join(dir, e.name);
+      try {
+        const st = fs.statSync(fp);
+        if (st.size < 50) continue;
+        out.push({ fp, mtime: st.mtimeMs, size: st.size });
+      } catch {}
+    }
+  }
+  out.sort((a, b) => b.mtime - a.mtime);
+  for (const f0 of out.slice(0, 4)) {
+    try {
+      const len = Math.min(f0.size, 192 * 1024);
+      const fd = fs.openSync(f0.fp, 'r');
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, Math.max(0, f0.size - len));
+      fs.closeSync(fd);
+      let lastReq = null, lastRes = null;
+      for (const l of buf.toString('utf8').split('\n')) {
+        if (l.indexOf(perm.typeRequested) < 0 && l.indexOf(perm.typeResolved) < 0) continue;
+        try {
+          const o = JSON.parse(l);
+          if (o.type === perm.typeRequested) lastReq = o;
+          else if (o.type === perm.typeResolved) lastRes = o;
+        } catch {}
+      }
+      if (lastReq && (!lastRes || Number(lastReq.seq || 0) > Number(lastRes.seq || 0))) {
+        const q = get(lastReq, perm.questionPath) || '';
+        const optsRaw = get(lastReq, perm.optionsPath);
+        const opts = (Array.isArray(optsRaw) ? optsRaw : [])
+          .map((x) => (typeof x === 'string' ? x : (x && x.label) || ''))
+          .filter(Boolean).slice(0, 6);
+        const sid = path.basename(f0.fp).replace(/\.(jsonl?|json)$/i, '');
+        return {
+          state: 'confirm',
+          sessionId: sid,
+          question: String(q).slice(0, 200),
+          options: opts,
+          toolCallId: String(lastReq.tool_call_id || ''),
+          startedAt: parseTs(lastReq.ts) || Date.now(),
+        };
+      }
+    } catch {}
+  }
+  return null;
+}
+
+module.exports = { detectJournalQuestion, setDshHomes, tidyTitle, turnStart, heartbeat, turnState, dshActive, latestTask, latestTaskGeneric, zcodeTurnStart, zcodeActive, qoderActive, journalActivity, userTsFromChunk };

@@ -234,18 +234,27 @@ function normalize(event, payload) {
       const q = toolName
         ? `允许执行 ${toolName}?`
         : short(payload.message || payload.question || '需要确认', 120);
-      return { event: 'permission', question: q, detail: toolDetail(toolName, toolInput) };
+      return { event: 'permission', question: q, detail: toolDetail(toolName, toolInput),
+               options: Array.isArray(payload.options) ? payload.options.slice(0, 6).map(String) : [] };
     }
     case 'stop': case 'subagentstop': case 'subagent-stop': {
-      // 中止/取消/报错 都不是"正常完成"，单独走 interrupt，桌宠会立刻回到空闲
-      const reason = String(payload.stop_reason || payload.reason || payload.error || '');
-      if (/interrupt|abort|cancel|reject|error|fail/i.test(reason)) {
+      // 只有结构化 stop_reason 表明被中断才走 interrupt；最后一条消息的文本
+      // 可能提到 error/fail 等词（比如任务就是在修 bug），绝不能参与分类
+      const reason = String(payload.stop_reason || payload.reason || '');
+      if (/interrupt|abort|cancel|signal/i.test(reason)) {
         return { event: 'interrupt', title: short(reason || '已中断', 80) };
       }
-      return { event: 'stop', title: short(payload.last_assistant_message || payload.stop_reason || '任务完成', 100) };
+      return { event: 'stop', title: short(payload.last_assistant_message || '任务完成', 100) };
     }
-    case 'notification':
-      return { event: 'message', detail: short(payload.message || '', 120) };
+    case 'notification': {
+      // Claude 系的 Notification 钩子在弹权限框时也会触发；消息含权限语义时
+      // 转成 question 卡片（桌宠可远程作答），其余仍按普通消息处理
+      const msg = String(payload.message || '');
+      if (/确认|允许|拒绝|permission|approve|deny/i.test(msg)) {
+        return { event: 'question', title: short(msg, 120), freeText: true };
+      }
+      return { event: 'message', detail: short(msg, 120) };
+    }
     case 'subagentstart': case 'subagent-start':
       return { event: 'message', detail: '子任务启动' };
     case 'sessionend': case 'session-end':

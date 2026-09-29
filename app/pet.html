@@ -349,13 +349,13 @@
   /* ---------------- task panel ---------------- */
   #panel {
     position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%) translateY(8px);
-    width: 264px; max-height: 205px; overflow-y: auto;
+    width: 264px; max-height: 260px; overflow-y: auto; overflow-x: hidden;
     background: rgba(28,30,38,.96); border-radius: 14px; color: #dde;
     padding: 10px 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
     opacity: 0; pointer-events: none; transition: all .22s; z-index: 25;
   }
   #panel.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
-  #panel::-webkit-scrollbar { width: 5px; }
+  #panel::-webkit-scrollbar { width: 5px; height: 5px; }
   #panel::-webkit-scrollbar-thumb { background: #ffffff1e; border-radius: 3px; }
   #panel::-webkit-scrollbar-thumb:hover { background: #ffffff30; }
   #panel::-webkit-scrollbar-track { background: transparent; }
@@ -366,7 +366,7 @@
     border-radius: 6px; background: #ffffff14; color: #aab; cursor: pointer;
     font-size: 13px; user-select: none; flex-shrink: 0; }
   #panel-close:hover { background: #ffffff2c; color: #fff; }
-  .p-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; border-top: 1px solid #ffffff10; }
+  .p-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 2px 5px; border-top: 1px solid #ffffff10; }
   .p-row.off { opacity: .4; }
   .p-row.off .p-ico img { filter: grayscale(.7); }
   .p-row:first-of-type { border-top: 0; }
@@ -375,8 +375,8 @@
     box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
   .p-main { flex: 1; min-width: 0; }
   .p-name { font-size: 12px; font-weight: 600; }
-  .p-sub { font-size: 10.5px; color: #889; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .p-state { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: #ffffff14; white-space: nowrap; }
+  .p-sub { font-size: 10.5px; color: #889; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; word-break: break-all; }
+  .p-state { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: #ffffff14; white-space: nowrap; margin-top: 1px; flex-shrink: 0; }
   .p-state.off { background: #ffffff0a; color: #778; }
   .p-state.working { background: #2e9e5b33; color: #7fd7a0; }
   .p-state.confirm { background: #ffd47933; color: #ffd479; }
@@ -386,8 +386,9 @@
   .p-todos { width: 100%; margin: 1px 0 3px 28px; }
   .p-todo { display: flex; gap: 5px; font-size: 10.5px; line-height: 1.55; color: #889; }
   .p-todo .m { flex-shrink: 0; width: 11px; text-align: center; }
-  .p-todo .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-todo .t { overflow: hidden; white-space: normal; word-break: break-all; }
   .p-todo.completed { color: #6fbf8f; opacity: .8; }
+   .p-tok { text-align: left; font-size: 10px; color: #7a8699; margin-top: 1px; }
   .p-todo.in_progress { color: #fff; font-weight: 600; }
   .p-todo.in_progress .m { color: #7fd7a0; }
 
@@ -592,7 +593,7 @@ function celebrate() {
 }
 
 // ---------------- render ----------------
-const STATE_TEXT = { idle: '空闲', working: '运行中', confirm: '待确认', done: '完成', error: '出错' };
+const STATE_TEXT = { idle: '空闲', working: '运行中', confirm: '待确认', done: '完成', error: '出错' , running: '应用运行中' };
 
 function ico(app, size) {
   return app.icon
@@ -669,11 +670,6 @@ function render(snap) {
   // without one, cards sit at the bubble's distance from the pet (so the
   // rest reminder never floats far above the pet). base is read from CSS
   // (#bubble bottom) so the two never desync.
-  const bubbleBottom = parseFloat(getComputedStyle(bubble).bottom) || 184;
-  overlayBase = bubbleBottom + (bubbleWillShow ? bubble.offsetHeight + 8 : 8);
-  renderCards(snap);
-  layoutStack(snap);
-
   if (bubbleWillShow) {
     const extra = working.length > 1 ? ` ${bubbleIdx + 1}/${working.length}` : '';
     const tExtra = (busy.tasks > 1 && working.length <= 1) ? ` · ${busy.tasks} 个任务并行` : '';
@@ -699,6 +695,11 @@ function render(snap) {
     if (el) el.textContent = bubbleElapsedFrom ? ` · ${fmtElapsed(Date.now() - bubbleElapsedFrom)}` : '';
     bubble.classList.add('show');
   } else bubble.classList.remove('show');
+  const bubbleBottom = parseFloat(getComputedStyle(bubble).bottom) || 184;
+  overlayBase = bubbleBottom + (bubbleWillShow ? bubble.offsetHeight + 8 : 8);
+  renderCards(snap);
+  layoutStack(snap);
+
 
   renderDots(snap);
   if (panelOpen) renderPanel(snap);
@@ -754,13 +755,14 @@ function renderCards(snap) {
     el.querySelector('.skip').style.display = c.rest ? 'none' : '';
     // 提问卡：显示输入框与"发送"，隐藏允许/拒绝；其余卡片反之
     const free = !!c.freeText;
-    el.querySelector('.c-input').style.display = free ? '' : 'none';
-    el.querySelector('.send').style.display = free ? '' : 'none';
-    okBtn.style.display = free ? 'none' : '';
-    noBtn.style.display = free ? 'none' : '';
+    const hasOpts = (c.options || []).length > 0;
+    el.querySelector('.c-input').style.display = (free || hasOpts) ? '' : 'none';
+    el.querySelector('.send').style.display = (free || hasOpts) ? '' : 'none';
+    okBtn.style.display = (free || hasOpts) ? 'none' : '';
+    noBtn.style.display = (free || hasOpts) ? 'none' : '';
     const optWrap = el.querySelector('.c-opts');
     optWrap.innerHTML = '';
-    if (free && (c.options || []).length) {
+    if ((c.options || []).length) {   // 带选项的卡片（含权限请求）都渲染选项按钮
       for (const o of c.options) {
         const b = document.createElement('button');
         b.className = 'c-opt';
@@ -886,12 +888,17 @@ function renderPanel(snap) {
        <div class="p-main"><div class="p-name">${app.name}</div><div class="p-sub"></div></div>
        <div class="p-state ${app.state}">${STATE_TEXT[app.state] || app.state}${elapsed}</div>`;
     const tk = app.tokens;
-    const tokTxt = tk && tk.out ? `  ${fmtTok(tk.out)} tokens` : '';
-    row.querySelector('.p-sub').textContent = sub + tokTxt;
+    row.querySelector('.p-sub').textContent = sub.replace(/\s+$/, '');
+    row.querySelector('.p-main').title = sub;   // 悬浮详情 → 显示完整内容
     if (tk && (tk.out || tk.ctx)) {
-      row.title = `今日生成 ${fmtTok(tk.out)} tokens`
+      const tok = document.createElement('div');
+      tok.className = 'p-tok';
+      tok.textContent = tk.out ? `${fmtTok(tk.out)} tokens` : '';
+      tok.title = `今日生成 ${fmtTok(tk.out)} tokens`
         + (tk.ctx ? ` · 上下文峰值 ${fmtTok(tk.ctx)}` : '')
         + (tk.cache ? ` · 其中缓存读取 ${fmtTok(tk.cache)}` : '');
+      row.querySelector('.p-main').appendChild(tok);
+      row.title = '点击跳到该应用窗口';
     }
     if (todos.length) {
       const list = document.createElement('div');

@@ -80,7 +80,7 @@ module.exports = {
       integration: [{ style: 'dsh-patch', eventCase: 'pascal' }],
       // DSH 数据目录：投影缓存（storages/session_projcache/sessions/*.json）
       // 记录每日 token 用量；不依赖 DSH_HOME 环境变量（可能指向迁移前旧路径）
-      activity: { roots: ['%DSH_HOME%', 'D:/CodingData/DSH-Data'] },
+      activity: { roots: ['%DSH_HOME%', 'D:/CodingData/DSH-Data'], progressFromJournal: true },
     },
   ],
 };

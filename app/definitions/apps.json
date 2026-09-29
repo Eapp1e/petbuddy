@@ -291,11 +291,14 @@
       "fileState": {
         "runningWhen": {
           "path": "status",
-          "equals": "running"
+          "equals": "running",
+          "fallbackFresh": true
         },
+        "appOpenState": true,
         "startedAtPath": "started_at",
         "titleFromLastUserMessage": true
-      }
+      },
+      "skipProcessGate": true
     },
     "note": "桌面版 / CLI / VS Code 扩展，镜像模式"
   },

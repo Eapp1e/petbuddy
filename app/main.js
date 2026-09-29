@@ -79,6 +79,12 @@ app.disableHardwareAcceleration();
 // ------------------------------------------------------- token discovery ---
 // 接入应用时自动找出它的用量数据源（不要求用户/开发者手写路径）。
 // 结果存进 settings.system.tokenSources，重启后依然有效。
+// DSH 数据目录覆盖（activity.roots），供 token/回合/进度扫描统一使用
+try {
+  const dshDef = apps.getApp('dsh');
+  taskTimer.setDshHomes((dshDef && dshDef.activity && dshDef.activity.roots) || null);
+} catch {}
+
 function tokenRootsFor(id) {
   const sys = settings.system || {};
   const saved = (sys.tokenSources && sys.tokenSources[id]) || [];
@@ -313,23 +319,41 @@ function reconcileAppState(s) {
   }
   const active = all.filter((x) => x.state === 'working' || x.state === 'confirm');
   s.tasks = active.length;
-  if (!active.length) return;
   active.sort((a, b) => b.lastTs - a.lastTs);
   const cur = active[0];
-  const next = cur.state === 'confirm' ? 'confirm' : 'working';
-  if (s.state !== next) { s.state = next; s.since = Date.now(); }
-  s.title = cur.title || s.title;
-  s.detail = cur.detail || s.detail;
-  s.steps = cur.steps;
-  s.todos = Array.isArray(cur.todos) ? cur.todos : null;
-  s.action = cur.action || s.action;
-  s.target = cur.target !== undefined ? cur.target : s.target;
-  s.startedAt = cur.startedAt || s.startedAt || 0;
-  s.lastTs = Math.max(s.lastTs, cur.lastTs);
+  if (cur) {
+    const next = cur.state === 'confirm' ? 'confirm' : 'working';
+    if (s.state !== next) { s.state = next; s.since = Date.now(); }
+    s.title = cur.title || '';
+    s.detail = cur.detail || '';
+    s.steps = cur.steps;
+    s.todos = Array.isArray(cur.todos) ? cur.todos : null;
+    s.action = cur.action || '';
+    s.target = cur.target !== undefined ? cur.target : '';
+    s.startedAt = cur.startedAt || 0;
+    s.lastTs = Math.max(s.lastTs, cur.lastTs);
+    return;
+  }
+  // 没有正在干活的会话：应用运行中（如 cline 开着但 Agent 空闲）→ 清掉任务残留
+  const rest = all.slice().sort((a, b) => b.lastTs - a.lastTs);
+  const cur2 = rest[0];
+  if (cur2 && cur2.state === 'running') {
+    if (s.state !== 'running') { s.state = 'running'; s.since = Date.now(); }
+    s.title = ''; s.detail = ''; s.steps = 0; s.todos = null; s.action = ''; s.target = '';
+    s.startedAt = cur2.startedAt || 0;
+    s.lastTs = Math.max(s.lastTs, cur2.lastTs);
+    return;
+  }
+  // 全部结束：working/confirm 流转到 done 并清任务残留；已是 done/idle/error 则保留原标题
+  if (s.state === 'working' || s.state === 'confirm') {
+    s.state = 'done'; s.since = Date.now();
+    s.title = ''; s.detail = ''; s.todos = null; s.action = ''; s.target = '';
+  }
 }
 for (const a of apps.allApps()) ensureState(a);
 /** pending confirms: Map<string, card> */
 const confirms = new Map();
+const journalCards = new Map(); // appId -> 由日志权限询问创建的卡片 id
 let confirmSeq = 0;
 
 function anyPendingConfirm() {
@@ -446,6 +470,14 @@ function clearConfirmsForApp(id) {
 
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : (s || ''));
 
+// 常驻桌宠不允许因单次事件处理崩溃而退出：记录堆栈，保持存活
+process.on('uncaughtException', (e) => {
+  try { log('uncaughtException: ' + ((e && e.stack) || e)); } catch {}
+});
+process.on('unhandledRejection', (e) => {
+  try { log('unhandledRejection: ' + ((e && e.stack) || e)); } catch {}
+});
+
 function handleEvent(body) {
   const app = apps.resolveApp(body.app);
   if (!app) return { ignored: true, reason: 'unknown app' };
@@ -463,7 +495,7 @@ function handleEvent(body) {
     lastPreToolLog[appId] = Date.now();
     log('event', appId, 'pre-tool (throttled)');
   }
-  const title = clip(String(body.title || ''), 120);
+  const title = taskTimer.tidyTitle(body.title || '');
   const detail = clip(String(body.detail || body.toolName || ''), 160);
   const s = ensureState(app);
   s.running = true; // a live event implies the app is up
@@ -526,8 +558,15 @@ function handleEvent(body) {
       if (body.taskOp) applyTaskOp(sess, body.taskOp); // incremental plan (TaskCreate/TaskUpdate style)
       if (body.action) sess.action = body.action;
       if (body.target !== undefined) sess.target = body.target;
-      setAppState(appId, { state: 'working', detail, steps: s.steps + 1 });
-      Object.assign(sess, { state: 'working', detail, steps: sess.steps + 1 });
+      // 声明了 progressFromJournal 的应用（如 DSH）：实时进度由投影缓存提供，
+      // 看门狗每轮写入，钩子不覆盖详情
+      if (app.activity && app.activity.progressFromJournal) {
+        setAppState(appId, { state: 'working', steps: s.steps + 1 });
+        Object.assign(sess, { state: 'working', steps: sess.steps + 1 });
+      } else {
+        setAppState(appId, { state: 'working', detail, steps: s.steps + 1 });
+        Object.assign(sess, { state: 'working', detail, steps: sess.steps + 1 });
+      }
       break;
     }
     case 'post-tool':
@@ -535,6 +574,7 @@ function handleEvent(body) {
       Object.assign(sess, { state: 'working', detail });
       break;
     case 'post-tool-failure':
+      sess.lastErrTs = Date.now();   // 记录最近一次失败时间，供 stop 分类使用
       setAppState(appId, { state: 'working', detail, errors: s.errors + 1 });
       Object.assign(sess, { state: 'working', detail, errors: sess.errors + 1 });
       break;
@@ -581,8 +621,10 @@ function handleEvent(body) {
       s.lastStopAt = Date.now();
       // the session that ended is done/error — the app only shows done when
       // no other session of the same app is still working (reconcile below)
-      const failed = sess.errors > 0;
-      Object.assign(sess, { state: failed ? 'error' : 'done', title: title || (failed ? '任务出错' : '任务完成'), detail: '' });
+      // 工具中途失败会被 Agent 自行处理并继续：只有收尾前 30 秒内仍在失败，
+      // 才认为任务真的以失败告终；正常完成时清零计数
+      const failed = sess.errors > 0 && sess.lastErrTs && Date.now() - sess.lastErrTs < 30000;
+      Object.assign(sess, { state: failed ? 'error' : 'done', title: title || (failed ? '任务出错' : '任务完成'), detail: '', errors: 0, lastErrTs: 0 });
       setAppState(appId, { state: failed ? 'error' : 'done', title: sess.title, detail: '' });
       break;
     }
@@ -884,8 +926,9 @@ async function watchdogTick() {
       // file-based presence: DSH records its own open turn, so it counts as
       // running even when no hook events arrive for minutes (thinking /
       // deep-search phases are completely silent)
-      if (id === 'dsh' && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
-        const act = taskTimer.dshActive();
+      if (id === 'dsh') {   // DSH 无可识别进程名，运行判定完全交给投影缓存
+        const dshHomes = ((s.meta && s.meta.activity && s.meta.activity.roots) || []).map((r) => tokenstats.expandPath(r));
+        const act = taskTimer.dshActive(90 * 1000, dshHomes.length ? dshHomes : null);
         if (act) {
           if (!s.running) { s.running = true; changed = true; }
           const ss = s.sessions[act.sessionId];
@@ -898,40 +941,121 @@ async function watchdogTick() {
             ss.state = 'working';
             ss.lastTs = Date.now();
             if (act.startedAt) ss.startedAt = act.startedAt;
-            if (act.title) ss.title = act.title; // the app's latest task text beats a stale cwd
+            if (act.title) ss.title = taskTimer.tidyTitle(act.title);
+          if (act.detail) ss.detail = act.detail;   // 实时进度：回合/步数/上下文 // the app's latest task text beats a stale cwd
           }
           reconcileAppState(s);
           changed = true;
           log('dsh running (detected from its session file)', act.sessionId);
+        } else if (s.state === 'working') {
+          // 投影缓存显示回合已结束且无 stop 钩子（兜底）：视为完成，绝不报中断
+          s.state = 'done'; s.title = ''; s.detail = ''; s.todos = null;
+          reconcileAppState(s);
+          changed = true;
+          log('dsh journal quiet while working -> done');
         }
       }
       // generic file-based presence: any app that declares an activity source
       // (built-in catalog or the user's apps.config.json) gets working/idle and
       // the runtime clock derived from its own journals — data-driven, no
       // per-app code needed (DSH above keeps its richer turn-state logic)
-      if (id !== 'dsh' && s.running && (s.state === 'idle' || s.state === 'done' || s.state === 'error')) {
+      const skipGate = s.meta && s.meta.activity && s.meta.activity.skipProcessGate;
+      if (id !== 'dsh' && (s.running || skipGate) && (s.state === 'idle' || s.state === 'done' || s.state === 'error' || s.state === 'running')) {
+        // 日志驱动的权限询问（如 Qoder 的三选项提问）→ 弹确认卡片，优先于常规存在性判定
+        const permCfg = s.meta && s.meta.activity && s.meta.activity.permission;
+        if (permCfg) {
+          const jq = taskTimer.detectJournalQuestion(permCfg, s.meta.activity.roots);
+          if (jq) {
+            const cid = 'j-' + appId + '-' + jq.sessionId + '-' + (jq.toolCallId || '');
+            if (!confirms.has(cid)) {
+              confirms.set(cid, {
+                id: cid, app: appId,
+                question: jq.question, detail: '',
+                freeText: true,
+                options: (jq.options || []).slice(0, 6),
+                ts: Date.now(), status: 'pending',
+                canApprove: false, canDeny: false,
+              });
+              journalCards.set(appId, cid);
+              log('journal question -> confirm card', appId, jq.question.slice(0, 60));
+            }
+            setAppState(appId, { state: 'confirm', title: jq.question.slice(0, 80) });
+            const ssq = s.sessions[jq.sessionId];
+            if (ssq) { ssq.state = 'confirm'; ssq.lastTs = Date.now(); }
+            reconcileAppState(s);
+            changed = true;
+            broadcast();
+            continue;
+          }
+          const staleCid = journalCards.get(appId);
+          if (staleCid && confirms.has(staleCid)) {
+            confirms.delete(staleCid); journalCards.delete(appId);
+            changed = true;   // 询问已在应用侧被回答，撤下卡片
+          }
+        }
         const act = taskTimer.journalActivity(s.meta, 90 * 1000);
         if (act) {
+          const st = act.state || 'working';
+          if (st === 'confirm' && act.question) {
+            // 日志里的未决询问 → 确认卡片（幂等：同一 tool_call_id 只弹一张）
+            const cid = 'j-' + appId + '-' + String(act.sessionId || '') + '-' + String(act.toolCallId || act.ts || Date.now());
+            if (!confirms.has(cid)) {
+              confirms.set(cid, {
+                id: cid, app: appId,
+                question: String(act.question).slice(0, 200),
+                detail: '',
+                freeText: true,
+                options: Array.isArray(act.options) ? act.options.slice(0, 6).map(String) : [],
+                ts: Date.now(), status: 'pending',
+                canApprove: false, canDeny: false,
+              });
+              journalCards.set(appId, cid);
+              log('journal question -> confirm card', appId, String(act.question).slice(0, 60));
+            }
+            setAppState(appId, { state: 'confirm', title: String(act.question).slice(0, 80) });
+            const ssq = s.sessions[act.sessionId];
+            if (ssq) { ssq.state = 'confirm'; ssq.lastTs = Date.now(); }
+            reconcileAppState(s);
+            changed = true;
+            broadcast();
+            continue;
+          }
+          const staleCid = journalCards.get(appId);
+          if (staleCid && confirms.has(staleCid)) {
+            confirms.delete(staleCid); journalCards.delete(appId);
+            changed = true; // 询问已在应用侧被回答，撤下卡片
+          }
           const ss = s.sessions[act.sessionId];
           if (!ss) {
             s.sessions[act.sessionId] = {
-              state: 'working', title: act.title || '', detail: act.detail || '', steps: 0, errors: 0,
+              state: st, title: st === 'working' ? (act.title || '') : '', detail: act.detail || '', steps: 0, errors: 0,
               lastTs: Date.now(), startedAt: act.startedAt || Date.now(),
             };
           } else {
-            ss.state = 'working';
+            ss.state = st;
             ss.lastTs = Date.now();
             if (act.startedAt) ss.startedAt = act.startedAt;
-            if (act.title) ss.title = act.title;
-            if (act.detail) ss.detail = act.detail;
+            if (st === 'working') {
+              if (act.title) ss.title = taskTimer.tidyTitle(act.title);
+              if (act.detail) ss.detail = act.detail;
+            } else {
+              ss.title = ''; ss.detail = '';   // 应用运行中：无任务标题
+            }
           }
           s.lastTs = Date.now(); // 活动信号新鲜，stall 检查不与之冲突
           reconcileAppState(s);
           changed = true;
-          log('activity presence (journal)', id);
+          log('activity presence (journal)', id, st);
+        } else if (s.state === 'running' && skipGate) {
+          // 日志不再新鲜（应用已关闭）：应用运行中 → 空闲
+          s.state = 'idle'; s.title = ''; s.detail = '';
+          changed = true;
+          log('journal went stale while app-open -> idle', id);
         }
       }
-      if (!s.running && (s.state === 'working' || s.state === 'confirm')) {
+      // DSH 无进程名可匹配、skipGate 应用进程名不可靠：消失检查会误报，
+      // 它们的空闲由各自的日志新鲜度判定
+      if (!s.running && id !== 'dsh' && !skipGate && (s.state === 'working' || s.state === 'confirm')) {
         s.state = 'idle'; s.title = ''; s.detail = '';
         clearConfirmsForApp(id);
         changed = true;
@@ -946,8 +1070,11 @@ async function watchdogTick() {
         const sid = activeSid(s);
         // trust the app's "no open turn" verdict once events have been quiet
         // briefly (a just-arrived event may predate the app's own bookkeeping)
-        if (sid && taskTimer.turnState(sid) === 'idle') {
-          s.state = 'error'; s.title = '任务已停止响应'; s.detail = '';
+        const dshHomes2 = ((s.meta && s.meta.activity && s.meta.activity.roots) || []).map((r) => tokenstats.expandPath(r));
+        if (sid && taskTimer.turnState(sid, dshHomes2.length ? dshHomes2 : null) === 'idle') {
+          // 回合被应用正常关闭（含正常完成）→ 标记完成，而不是出错；
+          // 只有事件与回合状态双双静默（stalled）才判 error
+          s.state = 'done'; s.title = ''; s.detail = '';
           changed = true;
           log('app reports no open turn -> error', id);
         }

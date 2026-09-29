@@ -1,7 +1,8 @@
 'use strict';
 /**
  * 按官网域名抓取应用的官方图标（favicon）。
- * 尝试顺序：站点 /favicon.ico → 聚合服务 → 备用服务，
+ * 尝试顺序：站点 HTML 里声明的 icon link（最权威）→ 站点 /favicon.ico →
+ * 聚合服务（最后手段，返回值标注 source 便于人工甄别），
  * 校验图片魔数后存到 ~/.petbuddy/icons/<id>.<ext>。
  */
 const fs = require('fs');
@@ -44,7 +45,8 @@ function isImage(buf) {
     (buf[0] === 0x89 && buf[1] === 0x50) ||  // PNG
     (buf[0] === 0xFF && buf[1] === 0xD8) ||  // JPEG
     (buf[0] === 0x47 && buf[1] === 0x49) ||  // GIF
-    (buf[0] === 0x3C && buf[1] === 0x3F)     // <?xml …（svg）
+    (buf[0] === 0x3C && buf[1] === 0x3F) ||  // <?xml …（svg）
+    (buf[0] === 0x3C && buf[1] === 0x73)     // <svg（无 xml 头的 svg）
   );
 }
 
@@ -55,6 +57,28 @@ function extOf(buf) {
   return 'svg';
 }
 
+/** 解析站点首页里自己声明的 icon link（<link rel="…icon…" href>），最权威 */
+async function siteDeclaredIcon(host) {
+  const html = await getBuf(`https://${host}/`);
+  if (!html) return null;
+  const s = html.toString('utf8');
+  // 依次尝试：shortcut icon / icon / apple-touch-icon，取第一个站内声明的
+  const linkRe = /<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*>/gi;
+  let m;
+  while ((m = linkRe.exec(s))) {
+    const tag = m[0];
+    if (/mask-icon/i.test(tag)) continue; // safari 固定页签图标优先级低
+    const href = (tag.match(/href=["']([^"']+)["']/i) || [])[1];
+    if (!href || /^data:/i.test(href)) continue;
+    try {
+      const u = new URL(href, `https://${host}/`);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') continue;
+      return u.href;
+    } catch { /* 相对路径非法则跳过 */ }
+  }
+  return null;
+}
+
 /** @returns {Promise<{ok:boolean, path?:string, source?:string, error?:string}>} */
 async function fetchAppIcon(id, site, dataDir) {
   const cleanId = String(id || '').trim().toLowerCase();
@@ -62,19 +86,25 @@ async function fetchAppIcon(id, site, dataDir) {
   const host = String(site || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
   if (!host || !host.includes('.')) return { ok: false, error: '请先填写官网域名（如 cursor.com）' };
 
-  const tries = [
-    `https://${host}/favicon.ico`,
-    `https://api.iowen.cn/favicon/${host}.png`,
-    `https://favicon.im/${host}?larger=true`,
-  ];
-  for (const u of tries) {
-    const buf = await getBuf(u);
+  // 第一优先：站点自己声明的 icon（域名自控，最权威）
+  const declared = await siteDeclaredIcon(host);
+
+  const tries = [];
+  if (declared) tries.push({ url: declared, source: `站点声明 ${declared}` });
+  tries.push(
+    { url: `https://${host}/favicon.ico`, source: `站点 favicon.ico` },
+    { url: `https://api.iowen.cn/favicon/${host}.png`, source: '聚合服务 api.iowen.cn（可能不准）' },
+    { url: `https://favicon.im/${host}?larger=true`, source: '聚合服务 favicon.im（可能不准）' },
+  );
+
+  for (const t of tries) {
+    const buf = await getBuf(t.url);
     if (isImage(buf)) {
       const dir = path.join(dataDir, 'icons');
       fs.mkdirSync(dir, { recursive: true });
       const fp = path.join(dir, `${cleanId}.${extOf(buf)}`);
       fs.writeFileSync(fp, buf);
-      return { ok: true, path: fp, source: u };
+      return { ok: true, path: fp, source: t.source };
     }
   }
   return { ok: false, error: '没抓到可用图标：可确认官网域名，或手动填图标路径' };
