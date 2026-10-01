@@ -966,20 +966,20 @@ async function watchdogTick() {
         if (permCfg) {
           const jq = taskTimer.detectJournalQuestion(permCfg, s.meta.activity.roots);
           if (jq) {
-            const cid = 'j-' + appId + '-' + jq.sessionId + '-' + (jq.toolCallId || '');
+            const cid = 'j-' + id + '-' + jq.sessionId + '-' + (jq.toolCallId || '');
             if (!confirms.has(cid)) {
               confirms.set(cid, {
-                id: cid, app: appId,
+                id: cid, app: id,
                 question: jq.question, detail: '',
                 freeText: true,
                 options: (jq.options || []).slice(0, 6),
                 ts: Date.now(), status: 'pending',
                 canApprove: false, canDeny: false,
               });
-              journalCards.set(appId, cid);
-              log('journal question -> confirm card', appId, jq.question.slice(0, 60));
+              journalCards.set(id, cid);
+              log('journal question -> confirm card', id, jq.question.slice(0, 60));
             }
-            setAppState(appId, { state: 'confirm', title: jq.question.slice(0, 80) });
+            setAppState(id, { state: 'confirm', title: jq.question.slice(0, 80) });
             const ssq = s.sessions[jq.sessionId];
             if (ssq) { ssq.state = 'confirm'; ssq.lastTs = Date.now(); }
             reconcileAppState(s);
@@ -987,9 +987,9 @@ async function watchdogTick() {
             broadcast();
             continue;
           }
-          const staleCid = journalCards.get(appId);
+          const staleCid = journalCards.get(id);
           if (staleCid && confirms.has(staleCid)) {
-            confirms.delete(staleCid); journalCards.delete(appId);
+            confirms.delete(staleCid); journalCards.delete(id);
             changed = true;   // 询问已在应用侧被回答，撤下卡片
           }
         }
@@ -998,10 +998,10 @@ async function watchdogTick() {
           const st = act.state || 'working';
           if (st === 'confirm' && act.question) {
             // 日志里的未决询问 → 确认卡片（幂等：同一 tool_call_id 只弹一张）
-            const cid = 'j-' + appId + '-' + String(act.sessionId || '') + '-' + String(act.toolCallId || act.ts || Date.now());
+            const cid = 'j-' + id + '-' + String(act.sessionId || '') + '-' + String(act.toolCallId || act.ts || Date.now());
             if (!confirms.has(cid)) {
               confirms.set(cid, {
-                id: cid, app: appId,
+                id: cid, app: id,
                 question: String(act.question).slice(0, 200),
                 detail: '',
                 freeText: true,
@@ -1009,10 +1009,10 @@ async function watchdogTick() {
                 ts: Date.now(), status: 'pending',
                 canApprove: false, canDeny: false,
               });
-              journalCards.set(appId, cid);
-              log('journal question -> confirm card', appId, String(act.question).slice(0, 60));
+              journalCards.set(id, cid);
+              log('journal question -> confirm card', id, String(act.question).slice(0, 60));
             }
-            setAppState(appId, { state: 'confirm', title: String(act.question).slice(0, 80) });
+            setAppState(id, { state: 'confirm', title: String(act.question).slice(0, 80) });
             const ssq = s.sessions[act.sessionId];
             if (ssq) { ssq.state = 'confirm'; ssq.lastTs = Date.now(); }
             reconcileAppState(s);
@@ -1020,9 +1020,9 @@ async function watchdogTick() {
             broadcast();
             continue;
           }
-          const staleCid = journalCards.get(appId);
+          const staleCid = journalCards.get(id);
           if (staleCid && confirms.has(staleCid)) {
-            confirms.delete(staleCid); journalCards.delete(appId);
+            confirms.delete(staleCid); journalCards.delete(id);
             changed = true; // 询问已在应用侧被回答，撤下卡片
           }
           const ss = s.sessions[act.sessionId];

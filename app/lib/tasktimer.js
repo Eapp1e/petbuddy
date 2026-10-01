@@ -533,7 +533,7 @@ function journalActivity(app, freshMs) {
     for (const f of files.slice(0, 4)) {
       try {
         const st = fs.statSync(f.fp);
-        const len = Math.min(st.size, 96 * 1024);
+        const len = Math.min(st.size, cfg.tailBytes || 96 * 1024);
         const fd = fs.openSync(f.fp, 'r');
         const buf = Buffer.alloc(len);
         fs.readSync(fd, buf, 0, len, st.size - len);
@@ -557,12 +557,12 @@ function journalActivity(app, freshMs) {
   }
 
   // 活动时间点：优先记录内的 ts 字段（每文件读尾部），否则用文件 mtime
-  let points = [];
+  const pts = [];
   if (cfg.tsField) {
     for (const f of files.slice(0, 12)) {
       try {
         const st = fs.statSync(f.fp);
-        const len = Math.min(st.size, 64 * 1024);
+        const len = Math.min(st.size, cfg.tailBytes || 64 * 1024);
         const fd = fs.openSync(f.fp, 'r');
         const buf = Buffer.alloc(len);
         fs.readSync(fd, buf, 0, len, st.size - len);
@@ -573,10 +573,20 @@ function journalActivity(app, freshMs) {
           let o;
           try { o = JSON.parse(t); } catch { continue; }
           const v = parseTs(get(o, cfg.tsField));
-          if (v > 0) points.push(v);
+          if (v > 0) pts.push({ ts: v, turn: cfg.turnIdPath ? String(get(o, cfg.turnIdPath) || '') : '' });
         }
       } catch {}
     }
+  }
+  // 可选：按回合 id 分组——任务时间只统计最新回合，跨回合的长间隔不回溯
+  let points;
+  if (cfg.turnIdPath && pts.length) {
+    let newestTurn = '';
+    let newestTs = 0;
+    for (const p of pts) if (p.ts > newestTs) { newestTs = p.ts; newestTurn = p.turn; }
+    points = pts.filter((p) => p.turn === newestTurn).map((p) => p.ts);
+  } else {
+    points = pts.map((p) => p.ts);
   }
   if (points.length < 2) points = files.map((f) => f.mtime);
   points = points.slice().sort((a, b) => a - b);
@@ -713,6 +723,40 @@ function journalActivity(app, freshMs) {
         if (title) break;
       } catch {}
     }
+  }
+  // 可选：从最新一条记录的 messages 里提取最后一条用户消息作为任务标题
+  // （如 ZCode 的 model_io 记录带完整请求体；tool_result 块自动跳过）
+  const tfm = cfg.titleFromMessages;
+  if (tfm && !title) {
+    try {
+      const st = fs.statSync(files[0].fp);
+      const len = Math.min(st.size, cfg.tailBytes || 96 * 1024);
+      const fd = fs.openSync(files[0].fp, 'r');
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, Math.max(0, st.size - len));
+      fs.closeSync(fd);
+      const ls = buf.toString('utf8').split('\n').reverse();
+      for (const l of ls) {
+        const t = l.trim();
+        if (!t.startsWith('{')) continue;
+        let o;
+        try { o = JSON.parse(t); } catch { continue; }
+        const msgs = get(o, tfm.messagesPath);
+        if (!Array.isArray(msgs)) continue;
+        for (let k = msgs.length - 1; k >= 0; k--) {
+          const msg = msgs[k] || {};
+          if (String(get(msg, tfm.rolePath || 'role')) !== (tfm.roleValue || 'user')) continue;
+          let c = get(msg, tfm.textPath || 'content');
+          if (Array.isArray(c)) {
+            const texts = c.filter((x) => x && x.type === 'text' && x.text).map((x) => x.text);
+            if (!texts.length) continue;   // 纯 tool_result：继续找更早的用户消息
+            c = texts.join(' ');
+          }
+          if (typeof c === 'string' && c.trim()) { title = tidyTitle(c, 80); break; }
+        }
+        if (title) break;
+      }
+    } catch {}
   }
   return { sessionId: 'activity:' + app.id, mtime: files[0].mtime, startedAt, title, detail };
 }

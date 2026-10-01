@@ -31,7 +31,7 @@ module.exports = {
       ports: [],
       keys: { approve: '{ENTER}', deny: '{ESC}' },
       integration: [{ style: 'zcode-config' }],
-      activity: { roots: ['~/.zcode/cli/rollout'], glob: 'model-io-*.jsonl', tsField: 'startedAt', gapMs: 180000 },
+      activity: { roots: ['~/.zcode/cli/rollout'], glob: 'model-io-*.jsonl', tsField: 'startedAt', turnIdPath: 'turnId', gapMs: 180000, tailBytes: 2 * 1024 * 1024, titleFromMessages: { messagesPath: 'request.messages', rolePath: 'role', textPath: 'content' } },
     },
     {
       id: 'codex',
@@ -74,7 +74,7 @@ module.exports = {
       color: '#4d6dFF',
       emoji: '🐋',
       icon: path.join(ICONS, 'dsh.svg'),
-      processNames: [],
+      processNames: ['DeepSeek Harness.exe'],
       ports: [3080],
       keys: { approve: '', deny: '' },
       integration: [{ style: 'dsh-patch', eventCase: 'pascal' }],
