@@ -1461,6 +1461,8 @@ function resizePetWindow() {
 async function boot() {
   try { fs.appendFileSync(store.DATA_DIR + '/boot-debug.txt', 'boot enter'); } catch {}
   store.ensureDataDir();
+  // 用户手动打开桌宠：清除退出标记，恢复"Agent 事件唤起"
+  try { fs.rmSync(path.join(store.DATA_DIR, 'pet-quit.flag'), { force: true }); } catch {}
   const icons = ensureIcons(ASSETS);
   app.setAppUserModelId('com.petbuddy.app');
 
@@ -1577,6 +1579,9 @@ app.on('window-all-closed', (e) => {
   e.preventDefault();
 });
 app.on('before-quit', () => {
+  // 用户主动退出：写退出标记，桥（12 小时内）不再因 Agent 事件自动唤起；
+  // 手动打开桌宠时清除标记
+  try { fs.writeFileSync(path.join(store.DATA_DIR, 'pet-quit.flag'), String(Date.now())); } catch {}
   // persist the final position so the next boot restores it
   try {
     if (petWindow && !petWindow.isDestroyed()) {

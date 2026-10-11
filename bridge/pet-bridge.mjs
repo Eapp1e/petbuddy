@@ -73,6 +73,14 @@ function post(port, body) {
 
 function spawnPet() {
   try {
+    // 用户主动退出过桌宠（标记 12 小时内有效）→ 尊重关闭状态，不因 Agent
+    // 事件自动唤起；手动打开桌宠会清除标记。标记在数据目录（与桌宠
+    // store.DATA_DIR 同一位置），不在代码仓库
+    const qf = path.join(HOME_DIR, 'pet-quit.flag');
+    const qst = fs.statSync(qf);
+    if (Date.now() - qst.mtimeMs < 12 * 3600 * 1000) return;
+  } catch {}
+  try {
     const exe = path.join(PET_ROOT, 'node_modules', 'electron', 'dist', 'electron.exe');
     if (!fs.existsSync(exe)) return;
     // Some hosts (WorkBuddy) inject ELECTRON_RUN_AS_NODE=1 into hook/agent
